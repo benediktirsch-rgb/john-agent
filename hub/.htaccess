@@ -1,0 +1,26 @@
+# Johns Rezeption — Schutz des Ordners (10.09.2026)
+#
+# Warum das nötig ist: hotel-vaikuntha.de zeigt im KAS auf das Wurzelverzeichnis des
+# Webspace — und dorthin zeigt auch naturnah-lernen.de. Dieser Ordner ist also unter
+# ZWEI Adressen erreichbar, ohne dass jemand ihn verlinkt hat. Alles, was hier liegt und
+# kein Programm ist, muss deshalb dicht sein.
+
+Options -Indexes
+
+# Der Zustand geht niemanden etwas an, der ihn nicht über api.php holt.
+<FilesMatch "\.(json|log|md)$">
+  Require all denied
+</FilesMatch>
+
+# Die Datei mit dem Token-Hash wird von PHP eingebunden, nie ausgeliefert.
+<Files "token.php">
+  Require all denied
+</Files>
+<Files "token.example.php">
+  Require all denied
+</Files>
+
+# Suchmaschinen haben hier nichts zu suchen.
+<IfModule mod_headers.c>
+  Header set X-Robots-Tag "noindex, nofollow"
+</IfModule>

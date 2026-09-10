@@ -1,0 +1,28 @@
+# Nichts Persönliches, keine Zugänge, keine Laufzeitdaten (Regel 6 der Architektur)
+
+# Zugänge und Geheimnisse
+hub/token.php
+*.token
+*-token.txt
+.env
+
+# Laufzeitstand der Rezeption (liegt auf dem Server, nie im Repo)
+hub/daten/*
+!hub/daten/.htaccess
+hub/log.jsonl
+
+# Laufzeitstand des Geräts
+geraet/*.log
+geraet/worker-stand.json
+geraet/letzter-takt.json
+geraet/takt-hash.txt
+geraet/.auftraege/
+.deploy-state/
+
+# Beratung: Rohantworten enthalten Kontext aus dem Gespräch — nur das Protokoll wird versioniert
+beratung/roh/
+
+# Windows/Editor
+desktop.ini
+Thumbs.db
+*.swp

@@ -1,0 +1,4 @@
+# Hier liegt Johns Stand (stand.json). Nichts davon wird je direkt ausgeliefert —
+# gelesen wird ausschließlich über ../api.php mit Token.
+Require all denied
+Options -Indexes
