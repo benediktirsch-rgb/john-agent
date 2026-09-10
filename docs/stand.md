@@ -13,6 +13,10 @@ nächste Session sieht, wo sie steht.
 | **Puls** Gerät → Rezeption | jede Minute | Rezeption meldet `wach: true`, Gerät `vishnu-master` |
 | **Wiederanlauf** | Aufgabe „John Server" jetzt **jede Minute** (vorher 5) | `-Status` zeigt `PT1M` |
 | **Hub im Compass-Build** | `build-compass.ps1` setzt Adresse + Token in die eigene Instanz | im gebauten `index.html` nachgelesen |
+| **Zwei Schlüssel** (Gerät / Browser) + CORS-Allowlist | Madeleines Einwand, sofort umgesetzt | live: Browser-Schlüssel auf `stapel`/`auftraege`/`log` → 403, fremder Ursprung ohne Allow-Origin |
+| **Takt-Wächter** `takt.letzter` / `stille_tage` | in `w=stand`, in der Lobby sichtbar | Feld live abgefragt (noch `null`: erster Takt am Morgen) |
+| **Projekt John** auf vishnuartists.com | `f/projekt-john.php`, im Menü „Intern" jeder eingeloggten Seite | Prüfstand 25/25; Deploy über GitHub |
+| **Bene digital** (Buchung → Entwurf → Freigabe) | Briefkasten `daten/eingang.jsonl`, Auftrag `coach`, öffentliche Persona | echter Durchlauf 11.09. 00:42: Worker holte den Auftrag selbst, Claude 12 s, Entwurf in der Rezeption |
 | **Demo bleibt sauber** | Produkt-Build nimmt Lobby und Rezeption heraus | Wortprüfung bestanden, `compass-john-lobby.js` nicht im Demo-Ordner |
 
 ## Fehlt noch
@@ -24,8 +28,9 @@ nächste Session sieht, wo sie steht.
 2. **hotel-vaikuntha.de mit eigenem Verzeichnis und Zertifikat** (`docs/kas-schritte.md`, Bene).
 3. **Zweites Gerät.** Das Protokoll trägt es; gebraucht wird nur `john-aufgaben.ps1 -Register` mit
    gesetztem `JOHN_HUB_TOKEN` und `JOHN_GERAET`. Handy: liest über die Rezeption mit, denkt nicht.
-4. **Vishnu-Backend „Projekt John"** — Vorstellung des Projekts und buchbarer virtueller Coach,
-   auf allen eingeloggten Seiten erreichbar.
+4. **Bene digital: Freigabe im Compass.** Heute gibt Bene Entwürfe auf `projekt-john.php` frei. Besser wäre
+   eine Rückfrage im Compass („Antwort an Sarah freigeben?"), dort entscheidet er ohnehin. Dazu: der erste
+   echte Login-Durchlauf der Seite (angemeldete Wege sind nur im Prüfstand gelaufen, nicht live).
 5. **`john-ki.ps1` herausziehen** (ADR 0003) — solange steht der Claude-Aufruf zweimal da.
 6. **Erster echter Takt steht noch aus.** Angelegt in der Nacht zum 11.09.; das Zeitfenster
    (Mo–Fr 6:30–21:30) öffnet erst am Morgen. Der erste Lauf gehört gelesen: `john\coaching\takt.md`
@@ -41,3 +46,7 @@ nächste Session sieht, wo sie steht.
   nur manchmal — im Zweifel Anführungszeichen aus Code-Strings heraushalten.
 - `jh_leer()` gab `geraete` einmal als `stdClass` zurück; der erste Puls auf einer frischen
   Rezeption starb daran. Gefunden nur, weil die Endpunkte wirklich gelaufen sind — `php -l` war grün.
+
+- Das Logbuch der Rezeption hat anfangs Fragetexte mitgeschrieben (`auftrag: <text>`, `fertig: <text>`).
+  Seit 11.09. 00:50 nur noch Art und Länge — bei `coach` stünde dort sonst die Frage eines Mitglieds.
+  Die zwei alten Zeilen im Live-Log stammen aus meinem eigenen Prüfauftrag und rollen mit der Zeit heraus.

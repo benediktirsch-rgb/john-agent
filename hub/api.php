@@ -22,6 +22,7 @@ date_default_timezone_set('Europe/Berlin');
 
 const JH_DATEN      = __DIR__ . '/daten';
 const JH_STAND      = JH_DATEN . '/stand.json';
+const JH_EINGANG    = JH_DATEN . '/eingang.jsonl';   // Briefkasten der Vishnu-Seite (docs/protokoll.md)
 const JH_LOG_MAX    = 200;      // Zeilen im Logbuch
 const JH_AUFTRAG_H  = 24;       // Stunden, dann verfällt ein unbearbeiteter Auftrag
 const JH_NIMM_MIN   = 15;       // Minuten, dann darf ein anderes Gerät den Auftrag holen
@@ -177,6 +178,7 @@ function jh_schreiben(callable $aendern): array {
     $roh = stream_get_contents($fh);
     $s = json_decode((string)$roh, true);
     $s = is_array($s) ? jh_normal($s) : jh_leer();
+    $s = jh_eingang_uebernehmen($s);   // Briefkasten zuerst, damit jeder Aufruf ihn sieht
     $ergebnis = $aendern($s);          // gibt [$neuerStand, $antwort] zurück
     [$s, $antwort] = $ergebnis;
     $s = jh_aufraeumen($s);
@@ -188,6 +190,42 @@ function jh_schreiben(callable $aendern): array {
     return $antwort;
 }
 
+/**
+ * Den Briefkasten leeren (unter der Sperre von jh_schreiben aufgerufen). Die Vishnu-Seite wirft
+ * Buchungen als Zeilen ein; hier werden sie zu Auftraegen der Art `coach`. Doppelte ids (ein
+ * zweimal abgeschicktes Formular) zaehlen einmal. Kaputte Zeilen fallen raus, statt alles
+ * aufzuhalten.
+ */
+function jh_eingang_uebernehmen(array $s): array {
+    if (!is_file(JH_EINGANG)) return $s;
+    $fh = @fopen(JH_EINGANG, 'c+b');
+    if (!$fh) return $s;
+    if (!flock($fh, LOCK_EX)) { fclose($fh); return $s; }
+    $roh = stream_get_contents($fh);
+    $bekannt = [];
+    foreach ($s['auftraege'] as $a) { $bekannt[(string)($a['id'] ?? '')] = true; }
+    $neu = 0;
+    foreach (preg_split('/\n+/', (string)$roh) as $zeile) {
+        $z = json_decode(trim($zeile), true);
+        if (!is_array($z)) continue;
+        $id = jh_text($z['id'] ?? '', 40);
+        $text = jh_text($z['text'] ?? '', 2000);
+        if ($id === '' || $text === '' || isset($bekannt[$id])) continue;
+        $s['auftraege'][] = [
+            'id' => $id, 'art' => 'coach', 'text' => $text,
+            'thema' => jh_text($z['thema'] ?? '', 20), 'form' => jh_text($z['form'] ?? 'schriftlich', 20),
+            'wuensche' => array_slice(array_map(fn($w) => jh_text($w, 20), (array)($z['wuensche'] ?? [])), 0, 3),
+            'wer' => jh_text($z['wer'] ?? 'vishnu', 40), 'vorname' => jh_text($z['vorname'] ?? '', 40),
+            'dringend' => false, 'erstellt' => jh_text($z['erstellt'] ?? '', 40) ?: jh_jetzt(),
+            'status' => 'offen', 'nimmt' => null, 'genommen' => null, 'ergebnis' => null,
+        ];
+        $bekannt[$id] = true; $neu++;
+    }
+    ftruncate($fh, 0); fflush($fh);
+    flock($fh, LOCK_UN); fclose($fh);
+    if ($neu) { $s = jh_logzeile($s, 'auftrag', "$neu Buchung(en) fuer Bene digital aus dem Briefkasten"); }
+    return $s;
+}
 function jh_logzeile(array $s, string $art, string $text, ?string $geraet = null): array {
     $s['log'][] = ['zeit' => jh_jetzt(), 'art' => $art, 'text' => jh_text($text, 300), 'geraet' => $geraet ? jh_text($geraet, 40) : null];
     return $s;
@@ -337,7 +375,7 @@ case 'auftrag':
     $art  = jh_text($koerper['art'] ?? 'frage', 20);
     $text = jh_text($koerper['text'] ?? '', 2000);
     if ($text === '') jh_fehler('text fehlt', 400);
-    if (!in_array($art, ['stapel', 'board', 'chat', 'frage', 'takt'], true)) jh_fehler('unbekannte art', 400);
+    if (!in_array($art, ['stapel', 'board', 'chat', 'frage', 'takt', 'coach'], true)) jh_fehler('unbekannte art', 400);
     jh_ende(jh_schreiben(function (array $s) use ($art, $text, $koerper) {
         $offen = 0;
         foreach ($s['auftraege'] as $a) { if ((string)($a['status'] ?? '') === 'offen') $offen++; }
@@ -350,16 +388,19 @@ case 'auftrag':
             'erstellt' => jh_jetzt(), 'status' => 'offen',
             'nimmt' => null, 'genommen' => null, 'ergebnis' => null,
         ];
-        $s = jh_logzeile($s, 'auftrag', "$art: $text");
+        // Nur Betrieb ins Logbuch, nie den Inhalt: bei coach steht dort sonst die Frage eines Mitglieds.
+        $s = jh_logzeile($s, 'auftrag', "$art: neuer Auftrag (" . mb_strlen($text) . ' Zeichen)');
         return [$s, ['ok' => true, 'id' => $id]];
     }));
 
 case 'auftraege':
-    $s = jh_lesen();
+    // Ueber jh_schreiben statt jh_lesen: nur so wird der Briefkasten geleert, bevor ein Geraet fragt.
+    $s = jh_schreiben(fn(array $st) => [$st, $st]);
     $liste = [];
     foreach ($s['auftraege'] as $a) {
         if ((string)($a['status'] ?? '') !== 'offen') continue;
-        $liste[] = ['id' => $a['id'], 'art' => $a['art'], 'text' => $a['text'], 'wer' => $a['wer'], 'erstellt' => $a['erstellt'], 'dringend' => $a['dringend'] ?? false];
+        $liste[] = ['id' => $a['id'], 'art' => $a['art'], 'text' => $a['text'], 'wer' => $a['wer'], 'erstellt' => $a['erstellt'], 'dringend' => $a['dringend'] ?? false,
+                    'thema' => $a['thema'] ?? null, 'vorname' => $a['vorname'] ?? null, 'form' => $a['form'] ?? null];
     }
     usort($liste, fn($x, $y) => (($y['dringend'] ?? false) <=> ($x['dringend'] ?? false)) ?: strcmp((string)$x['erstellt'], (string)$y['erstellt']));
     jh_ende(['ok' => true, 'auftraege' => array_slice($liste, 0, 20)]);
@@ -398,7 +439,7 @@ case 'ergebnis':
                 'notiz' => jh_text($koerper['notiz'] ?? '', 300),
                 'zeit' => jh_jetzt(),
             ];
-            $s = jh_logzeile($s, ((bool)($koerper['ok'] ?? true)) ? 'fertig' : 'fehler', (string)$a['art'] . ': ' . jh_text($koerper['text'] ?? '', 120), (string)($a['nimmt'] ?? ''));
+            $s = jh_logzeile($s, ((bool)($koerper['ok'] ?? true)) ? 'fertig' : 'fehler', (string)$a['art'] . ': ' . (((bool)($koerper['ok'] ?? true)) ? 'Antwort liegt vor (' . mb_strlen((string)($koerper['text'] ?? '')) . ' Zeichen)' : 'gescheitert'), (string)($a['nimmt'] ?? ''));
             return [$s, ['ok' => true]];
         }
         return [$s, ['ok' => false, 'fehler' => 'Auftrag nicht gefunden']];

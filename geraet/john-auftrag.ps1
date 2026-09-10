@@ -311,13 +311,27 @@ function HubLauf {
   try {
     $sys = (JohnSystem)
     $prompt = "Ein Auftrag aus dem Compass, Art $($a.art):`n$($a.text)`n`n--- Lage ---`n" + (LageText)
-    if ($a.art -eq 'frage') {
+    if ($a.art -eq 'coach') {
+      # Bene digital: eine Buchung aus dem Vishnu-Backend. Die Brandmauer dieses Skripts —
+      # KEIN JohnSystem, KEINE LageText, nichts aus C:\dev\john. John kennt Benes Leben; die
+      # Person, die hier fragt, bekommt davon nichts, auch nicht aus Versehen. Die Antwort ist ein
+      # Entwurf: sichtbar wird sie erst, wenn Bene sie auf der Seite freigibt.
+      $persona = Join-Path (Split-Path -Parent $Hier) 'wissen\bene-digital.md'
+      if (-not (Test-Path $persona)) { throw 'bene-digital.md fehlt — ohne oeffentliche Persona keine Antwort' }
+      $sys = [IO.File]::ReadAllText($persona, [Text.Encoding]::UTF8)
+      $themen = @{ flow = 'Flow und Kanban'; karriere = 'Karriere und Positionierung'; ki = 'KI im Arbeitsalltag'; fuehrung = 'Fuehrung und Team' }
+      $thema = if ($a.thema -and $themen.ContainsKey([string]$a.thema)) { $themen[[string]$a.thema] } else { 'offen' }
+      $prompt = "Thema: $thema`n" + $(if ($a.vorname) { "Die Person heisst $($a.vorname).`n" } else { '' }) +
+                $(if ($a.form -eq 'gespraech') { "Sie wuenscht sich zusaetzlich ein Gespraech; beantworte trotzdem schriftlich, was schriftlich geht, und sag, was ins Gespraech gehoert.`n" } else { '' }) +
+                "`nIhre Frage:`n$($a.text)"
+    }
+    elseif ($a.art -eq 'frage') {
       $sys = (Lies (Join-Path $JohnDir 'CLAUDE.md') 14000) + "`n`nAntworte als John in zwei bis sechs Sätzen, ohne JSON."
       $prompt = "$($a.text)`n`n--- Lage ---`n" + (LageText)
     }
     $antwort = Rufe-Claude $sys $prompt
-    HubRuf 'ergebnis' @{ id = $a.id; ok = $true; text = $antwort } | Out-Null
-    Log "Auftrag $($a.id) beantwortet."
+    HubRuf 'ergebnis' @{ id = $a.id; ok = $true; text = $antwort; notiz = $(if ($a.art -eq 'coach') { 'Entwurf - wartet auf Benes Freigabe' } else { '' }) } | Out-Null
+    Log ("Auftrag $($a.id) beantwortet" + $(if ($a.art -eq 'coach') { ' (Bene digital, Entwurf)' } else { '' }) + '.')
     return @{ ok = $true }
   } catch {
     HubRuf 'ergebnis' @{ id = $a.id; ok = $false; text = $_.Exception.Message } | Out-Null

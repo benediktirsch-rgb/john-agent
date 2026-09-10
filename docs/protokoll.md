@@ -96,7 +96,7 @@ eine Logzeile. **Das ist die Stelle, die „überall weg" möglich macht** — e
 
 ### `POST w=auftrag` — jemand will etwas von John
 
-`{"art":"stapel|board|chat|frage|takt","text":"…","wer":"…","dringend":false}`
+`{"art":"stapel|board|chat|frage|takt|coach","text":"…","wer":"…","dringend":false}`
 Antwort `{"ok":true,"id":"…"}`. Die Rezeption speichert nur; ausgeführt wird auf einem Gerät.
 Ein Auftrag verfällt nach 24 h unbearbeitet (`verfallen`), damit die Liste nicht zur Halde wird.
 
@@ -121,6 +121,23 @@ Rezeption sie weg.
 `{"art":"takt|start|fehler|hinweis","text":"…","geraet":"…"}`. Das Logbuch ist Johns Gedächtnis für
 Betrieb, nicht für Inhalte: 200 Zeilen, dann rollt es.
 
+### Briefkasten `daten/eingang.jsonl` — Buchungen von der Vishnu-Seite (seit 11.09.2026)
+
+Die Seite „Projekt John" (`vishnuartists.com/projekt-john.php`) liegt **auf demselben Webspace** wie
+die Rezeption. Sie braucht deshalb keinen Schlüssel und keinen HTTP-Aufruf: sie hängt eine Zeile an
+`/john/daten/eingang.jsonl` (unter `LOCK_EX`, `FILE_APPEND`) — ein Briefkasten, in den sie nur
+einwirft. Die Rezeption leert ihn bei **jeder** Schreibung unter ihrer eigenen Sperre und macht aus
+jeder Zeile einen Auftrag der Art `coach`. So bleibt `stand.json` in genau einer Hand.
+
+Zeile: `{"id":"b-<hex>","art":"coach","thema":"flow|karriere|ki|fuehrung","text":"…","wer":"vishnu:<person-id>","vorname":"…","form":"schriftlich|gespraech","wuensche":["2026-09-15 10:00"],"erstellt":"<iso>"}`
+
+Aufträge der Art `coach` beantwortet ein Gerät **ausschließlich** mit der öffentlichen Persona
+(`wissen/bene-digital.md`) — ohne Johns Lage, ohne Memory, ohne Dateien aus `C:\dev\john`. Das
+Ergebnis ist ein **Entwurf**: die Person sieht ihn erst, wenn Bene ihn auf der Seite freigegeben hat.
+
+Die Vishnu-Seite liest für ihre Anzeige `daten/stand.json` direkt (nur lesend, `LOCK_SH`) und zeigt
+Mitgliedern ausschließlich: ob John wach ist, wann sein letzter Takt war, und den Stand **ihrer
+eigenen** Buchungen. Johns Stapel sieht dort niemand.
 ## Sperren und Nebenläufigkeit
 
 Der ganze Zustand liegt in **einer** Datei (`daten/stand.json`). Jede Schreibung liest, ändert und
