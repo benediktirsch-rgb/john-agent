@@ -78,3 +78,7 @@ nächste Session sieht, wo sie steht.
 ## Hotel-Lobby — direkte Einstiege (11.09.2026)
 
 `#hotel-lobby` öffnet den Gesprächsraum direkt. Der Knopf „Hotel-Lobby öffnen“ sitzt in Johns Karte und in der ansichtsübergreifenden Rhythmusleiste. Vereins-Compass, Benes persönliches Portal und Hotel-Seite verlinken die Lobby. Keine neue Backend-Schnittstelle, keine öffentliche Gesprächsausgabe.
+
+## Holodeck und Aufzug · 11.09.2026
+
+Oberfläche: #holodeck und alter #hotel-lobby öffnen denselben Raum. Fünf fotografische Welten, Tür-/Rasterübergang, große Raumansicht, manuelle und tägliche Garderobe (Europe/Berlin). Private Bilddateien in compass/holodeck-assets sind gitignored und nur hinter den vorhandenen Gates auszuliefern. Keine Änderung der Raumschnittstelle oder Freigabe für mobiles Schreiben. Persönlichkeitswünsche separat an Claude übergeben.

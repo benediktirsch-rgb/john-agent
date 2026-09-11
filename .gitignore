@@ -26,3 +26,6 @@ beratung/roh/
 desktop.ini
 Thumbs.db
 *.swp
+
+# Private holodeck portrait assets; only deploy behind the existing gate.
+/compass/holodeck-assets/
