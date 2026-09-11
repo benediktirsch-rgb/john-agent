@@ -40,9 +40,24 @@ nächste Session sieht, wo sie steht.
 7. **Zeitvergleich im Compass selbst:** `stapelStandMischen` in dashboard.html vergleicht Zeitstempel als
    Text („…+02:00" gegen „…Z") — dabei gewinnt manchmal der ältere. Die Lobby umgeht es mit echtem
    Zeitvergleich; im Compass selbst ist es eine Zeile für eine Session, die dashboard.html gerade hält.
-8. **Gesprächsraum — Oberfläche:** baut Astra (Übergabe `madelene-agent/docs/integration-gespraechsraum.md`), als
-   `compass/compass-gespraechsraum.js` per PR. Beim Einbau: `<script>` in `dashboard.html`, Ausschluss in
-   `build-compass-produkt.ps1`, Prüfung am echten Worker.
+8. **Gesprächsraum — Oberfläche:** `compass/compass-gespraechsraum.js` liegt zur Integration vor.
+   Animierte Orte: Bar im Hotel Vaikuntha, Berghütte, Goa, Anden, Roms Altstadt. Drei gezeichnete Figuren;
+   Benes Figur ist ausdrücklich Platzhalter, bis er ein Porträt wählt (nur Browser-Sitzung, kein Upload).
+   Der Ort bleibt als lokale Einstellung erhalten, Gesprächsentwürfe nur im Arbeitsspeicher.
+   Geprüft im Browser gegen die PHP-Tür-Attrappe: Nachricht an beide, Reihenfolge John → Madeleine,
+   Ortswechsel während des Laufs, Beitrag zurückhalten, Stoppen mit sichtbarer system-Zeile und gespielter
+   Fehler. Zusätzlich: simulierte Rezeption mit ausgeblendeter Eingabe und bestätigter
+   Stoppanforderung; 390-Pixel-Ansicht ohne horizontalen Überlauf. Syntax mit `node --check` geprüft. Live-Modelle und Produktion wurden nicht verändert.
+   **Einbau durch Claude:** `<script>` nach Konfiguration in `dashboard.html`, Ausschluss in
+   `build-compass-produkt.ps1`, Prüfung am echten Worker. Benes neuer Zielort ist ausdrücklich
+   **https://bene.vaikuntha.eu**; diese Herkunft zusätzlich an Tür und Rezeption freigeben und die eigene
+   Compass-Instanz dort integrieren. Keine globale CORS-Freigabe. Finale Erreichbarkeit und Integration offen.
+   Das Script hängt sich an `#stapelBody`; alternativ `window.johnGespraechsraum.oeffnen()`.
+   Konfiguration: `JOHN_TUER`, `JOHN_HUB`, `JOHN_HUB_TOKEN_BROWSER` (bestehender Build-Alias
+   `JOHN_HUB_TOKEN` wird ebenfalls gelesen; ausschließlich Browser-Schlüssel einsetzen).
+   Ohne konfigurierte Instanz wird kein Knopf angelegt und kein Netzwerk angefragt.
+   Ohne lokales Gerät: nur `w=stand` und `POST w=stopp`, keine Texte. Unbenannte Räume verwenden das
+   neutrale Thema „Gespräch“, damit die erste Textzeile nicht versehentlich zum Rezeptionsthema wird.
 9. **Offene Entscheidung für Bene:** darf er am Handy in den Raum **schreiben**? Dann läge sein Satz einmal in der
    Rezeption. Bis dahin: am Handy Stand und Stopp.
 
