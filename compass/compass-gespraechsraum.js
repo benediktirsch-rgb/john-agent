@@ -71,7 +71,7 @@
       <path d="M-5 1Q0 5 6 0" stroke="#8b5149" stroke-width="1.7" fill="none" stroke-linecap="round"/>
       ${who === 'bene' ? '<image class="jgr-portrait" x="-21" y="-39" width="42" height="57" preserveAspectRatio="xMidYMid slice" clip-path="url(#jgr-portrait-clip)"/>' : ''}
       </g></g>
-      <g transform="translate(-57 137)"><rect width="114" height="28" rx="14" fill="#0b1e2c" fill-opacity=".82"/><text x="57" y="19" text-anchor="middle" fill="#fff" font-size="14" font-family="system-ui">${who === 'bene' ? 'Du · Platzhalter' : names[who]}</text></g>
+      <g transform="translate(-70 137)"><rect width="140" height="28" rx="14" fill="#0b1e2c" fill-opacity=".82"/><text x="70" y="19" text-anchor="middle" fill="#fff" font-size="14" font-family="system-ui">${who === 'bene' ? 'Du · Platzhalter' : names[who]}</text></g>
       <circle class="jgr-speaking" cx="33" cy="-32" r="7" fill="#d3f3a3"/>
     </g>`;
   }
