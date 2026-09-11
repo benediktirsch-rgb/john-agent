@@ -96,7 +96,7 @@ eine Logzeile. **Das ist die Stelle, die „überall weg" möglich macht** — e
 
 ### `POST w=auftrag` — jemand will etwas von John
 
-`{"art":"stapel|board|chat|frage|takt|coach","text":"…","wer":"…","dringend":false}`
+`{"art":"stapel|board|chat|frage|takt|coach|raum","text":"…","wer":"…","dringend":false}` (bei `raum` kein `text`, siehe Gesprächsraum)
 Antwort `{"ok":true,"id":"…"}`. Die Rezeption speichert nur; ausgeführt wird auf einem Gerät.
 Ein Auftrag verfällt nach 24 h unbearbeitet (`verfallen`), damit die Liste nicht zur Halde wird.
 
@@ -121,6 +121,74 @@ Rezeption sie weg.
 `{"art":"takt|start|fehler|hinweis","text":"…","geraet":"…"}`. Das Logbuch ist Johns Gedächtnis für
 Betrieb, nicht für Inhalte: 200 Zeilen, dann rollt es.
 
+### Gesprächsraum: Art `raum`, Status `gestoppt`, `POST w=stopp` (seit 11.09.2026 — Vertrag für Astras Oberfläche)
+
+Ein gemeinsamer Raum, in dem Bene, John und Madeleine sprechen. **Der Text liegt auf dem Gerät**
+(`C:\dev\john\coaching\raum\<raum>.jsonl`), die Rezeption trägt nur das Signal: wer gerade denkt, in welchem
+Raum, welcher Zug, welcher Status. Integrationsvorlage: `madelene-agent/docs/integration-gespraechsraum.md`.
+
+**Auftrag der Art `raum`** (`POST w=auftrag`, nur Gerät legt ihn an):
+`{"art":"raum","raum":"<id>","zug":<n>,"an":"john|madeleine","thema":"<≤80 Zeichen>","wer":"<geraet>"}`
+- `raum`: `[a-z0-9-]{1,40}`. `an`: wer diesen Zug denkt. `thema`: Überschrift des Raums, das Thema, nicht der Inhalt.
+- **`text` muss leer sein** — sonst **400** „raum trägt keinen Text". Ebenso bei `w=ergebnis`: nur `ok`, `notiz`
+  (≤300, z. B. „Zug 4 liegt am Gerät (812 Zeichen)").
+- Eine eigene Art `madeleine` gibt es **nicht**: eine einzelne Frage an Madeleine ist ein Raum mit einem Zug. Ein
+  Weg, nicht zwei.
+
+**Status** (für alle Arten):
+
+```
+ offen ──nimm──► laeuft ──ergebnis──► fertig
+   │               │
+   └──── stopp ────┴──────────────► gestoppt        (verfällt wie fertig nach 7 Tagen)
+   └── 24 h ──► verfallen
+```
+
+- `POST w=stopp {"id":"<auftrag>","wer":"compass|handy|geraet"}` (Gerät und Browser): `offen`/`laeuft` →
+  `gestoppt`. Auf `fertig`/`verfallen`/`gestoppt` → **409**.
+- `nimm` und `ergebnis` auf einen gestoppten Auftrag → **409**.
+- `POST w=puls` antwortet zusätzlich `stopp: [<ids>]` — gestoppte Aufträge, die **dieses** Gerät beansprucht hatte
+  (letzte Stunde). Das Gerät beendet den zugehörigen Kindprozess; so wirkt ein Stopp vom Handy.
+- `GET w=stand` liefert `raeume: [{id, raum, thema, zug, an, status, erstellt, fertig}]` — die letzten 20
+  Raum-Aufträge, **ohne Text**. Damit zeigt das Handy den Stand eines Raums.
+- Offene Raum-Aufträge zählen **nicht** in `puls.auftraege`: sie nimmt der Kindprozess, der sie angelegt hat,
+  sofort selbst. Sonst startete das Gerät für jeden Zug einen leeren Hub-Lauf.
+
+**Tür des Workers (nur lokal, `http://127.0.0.1:8788`, ab Worker 1.2.0)** — hier liegt der Text:
+
+| Aufruf | Antwort |
+|---|---|
+| `GET /raeume` | `{ok, raeume:[{id, thema, zuege, zuletzt, laeuft:<bool>, wartet:[an…]}]}` — die 50 jüngsten Räume |
+| `GET /raum?id=<raum>&seit=<zug>` | `{ok, id, thema, zuege:[{zug, wer, zeit, text, weitergeben}], laeuft:{an, seit}\|null, wartet:[an…]}` — `seit` liefert nur neuere Züge (Live: alle 2 s fragen, die Tür antwortet in ms). **404**, wenn es den Raum nicht gibt |
+| `POST /raum {id?, thema?, text, an:"john"\|"madeleine"\|"beide"}` | `{ok, id, zug, wartet}` — ohne `id` entsteht ein neuer Raum (Kennung aus dem Thema + Datum, ohne `thema` die erste Zeile des Texts); Benes Zug wird angehängt, die Antwort eingereiht (`wartet: true`, wenn John gerade anderes denkt oder ein anderer Raum vorn steht). `text` ≤ 8000 Zeichen (**413**), `an` Pflicht (**400**), unbekannte `id` **404**. Schreibt Bene zweimal, bevor jemand antwortet, entsteht kein zweiter Lauf — der wartende wird erweitert (john + madeleine = beide) |
+| `POST /raum/weitergeben {id, zug, weitergeben:false\|true}` | `{ok, id, zug, weitergeben}` — dieser Zug geht in keinen weiteren Zug ein (bzw. wieder ein). Unbekannter Zug **404** |
+| `POST /stopp {id:<raum>}` | `{ok, gestoppt:<bool>}` — beendet den laufenden Zug **samt Modellprozess** (`taskkill /T`), leert die Warteschlange des Raums, schreibt eine `system`-Zeile, meldet `w=stopp`. `gestoppt:false` = es lief nichts und wartete nichts |
+
+- **Reihenfolge:** Ein wartender Raum-Zug geht vor Takt und Hub-Aufträgen — dort wartet ein Mensch. Denkt John
+  gerade (Takt, Frage), wartet der Raum, bis der Kopf frei ist; ein Denkvorgang wird nie abgebrochen, um
+  einen anderen zu starten.
+- **Stopp vom Handy:** Browser → `w=stopp` an der Rezeption → nächster Puls des Geräts (alle **10 s**, solange
+  im Raum gesprochen wird, sonst 60 s) → Gerät beendet den Lauf, `system`-Zeile „Gestoppt von einem anderen Gerät".
+- **Hänger:** Ein Raum-Lauf wird nach 16 Min beendet („beide" sind zwei Modellaufrufe à bis 7 Min), andere nach 12.
+- **Zugnummern:** Tür und Kindprozess schreiben dieselbe Datei; beide nehmen den Mutex `Local\john-raum-<id>`.
+
+**Wer die Tür benutzen darf.** Die Tür beantwortet Privates. Deshalb:
+- Kommt eine Anfrage mit `Origin`, muss es eine eigene Seite sein: `https://bene.vishnuartists.com`,
+  `http(s)://localhost:<port>`, `http(s)://127.0.0.1:<port>` und was in der User-Variable `JOHN_TUER_ORIGINS`
+  steht (Komma-getrennt). Sonst **403** — auch für `GET` und `OPTIONS`. `Access-Control-Allow-Origin` nennt genau
+  diese Herkunft, nie `*`.
+- Anfragen **ohne** `Origin` (PowerShell, curl, geplante Aufgaben) sind erlaubt: sie kommen nicht aus einer
+  fremden Webseite.
+- **Handlungen nur per `POST`:** `/wecken`, `/takt`, `/raum` (schreibend), `/raum/weitergeben`, `/stopp`, `/__stop`.
+  `GET` darauf → **405**. Grund: ein `<img src="http://127.0.0.1:8788/wecken">` auf einer fremden Seite schickt
+  keinen `Origin` und darf nichts auslösen.
+- DNS-Rebinding greift nicht: http.sys nimmt nur die Hosts `127.0.0.1` und `localhost` an.
+
+`wer` eines Zugs: `bene` · `john` · `madeleine` · `system` (Stopp, Fehler — „leer heißt nie nichts").
+
+**Was in einen Zug eingeht:** Persona und Wissen **des Sprechenden** (John: seine Lage; Madeleine: ihr Wissen,
+privater Stand, Live-Zahlen aus dem Finanzlauf) plus die Züge dieses Raums mit `weitergeben ≠ false`. Nie die
+Wissensdateien des anderen.
 ### Johns Kachel überall: `compass` in `w=stand`, `POST w=spiegel`, `POST w=stapelstand` (seit 11.09.2026)
 
 Johns Kachel im Compass bekommt ihren Stapel vom Cockpit-Server (`/api/john/stapel`). Am Handy und auf

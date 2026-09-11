@@ -48,7 +48,7 @@ param(
   [switch]$OhneHub
 )
 $ErrorActionPreference = 'Stop'
-$VERSION = '1.1.0'   # 1.1: Spiegel fuer Johns Kachel auf allen Geraeten
+$VERSION = '1.2.0'   # 1.1: Spiegel fuer Johns Kachel auf allen Geraeten · 1.2: Gespraechsraum an der Tuer
 
 Add-Type -AssemblyName System.Net.Http -ErrorAction SilentlyContinue
 
@@ -221,7 +221,7 @@ function PulsSenden {
            else { 'Cockpit-Server läuft, antwortet gerade nicht' }
   $script:HubWas = 'puls'
   $script:HubTask = HubSenden 'puls' @{
-    geraet = $Geraet; version = $VERSION; kann = @('takt','stapel','wecken')
+    geraet = $Geraet; version = $VERSION; kann = @('takt','stapel','wecken','raum')
     notiz = $notiz; takt = $(if ($script:LetzterTakt -gt [datetime]::MinValue) { $script:LetzterTakt.ToString('o') } else { $null })
   }
 }
@@ -235,13 +235,24 @@ function HubAbholen {
     if (-not $res.IsSuccessStatusCode) { $script:HubFehler = "Rezeption HTTP $([int]$res.StatusCode)"; return }
     $script:HubFehler = ''; $script:HubZeit = Get-Date
     $d = $txt | ConvertFrom-Json
-    if ($script:HubWas -eq 'puls' -and $d.ok) { $script:HubOffen = [int]$d.auftraege; $script:HubCompassTs = [string]$d.compassTs }
+    if ($script:HubWas -eq 'puls' -and $d.ok) {
+      $script:HubOffen = [int]$d.auftraege; $script:HubCompassTs = [string]$d.compassTs
+      # Stopp vom Handy: die Rezeption nennt die Auftrags-IDs, der Raum steht in der .lauf-Datei.
+      $ids = @($d.stopp | Where-Object { $_ })
+      if ($ids.Count -and (Test-Path $script:LaufOrdner)) {
+        foreach ($lf in @(Get-ChildItem $script:LaufOrdner -Filter '*.lauf' -File)) {
+          $raum = [IO.Path]::GetFileNameWithoutExtension($lf.Name)
+          $l = RaumLauf $raum
+          if ($l -and $l.jobId -and ($ids -contains [string]$l.jobId)) { RaumStoppen $raum 'handy' -OhneMelden | Out-Null }
+        }
+      }
+    }
   } catch { $script:HubFehler = $_.Exception.Message }
 }
 
 # ── Kindprozesse: hier passiert das Denken ───────────────────────────────────────────────
 $script:Kinder = @()
-function KindStarten([string]$art, [string]$text) {
+function KindStarten([string]$art, [string]$text, [string]$raum = '', [string]$an = '') {
   if (-not (Test-Path $AuftragPs1)) { Log "john-auftrag.ps1 fehlt — kein Denken möglich ($AuftragPs1)" 'Red'; return $null }
   # Höchstens einer denkt — John hat einen Kopf. Der Spiegel denkt nicht (kein Claude, Sekunden)
   # und bekommt einen eigenen Platz, sonst wartete ein OK vom Handy auf einen 90-s-Gedanken.
@@ -251,10 +262,11 @@ function KindStarten([string]$art, [string]$text) {
   $argv = @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-WindowStyle','Hidden',
             '-File', $AuftragPs1, '-Art', $art, '-Geraet', $Geraet)
   if ($text) { $argv += @('-Text', $text) }
+  if ($raum) { $argv += @('-Raum', $raum, '-An', $an) }
   try {
     $p = Start-Process -FilePath 'powershell.exe' -ArgumentList $argv -WindowStyle Hidden -PassThru
-    $script:Kinder += @{ p = $p; art = $art; start = Get-Date }
-    if ($art -ne 'spiegel') { Log "Auftrag $art gestartet (PID $($p.Id))" 'Cyan' }
+    $script:Kinder += @{ p = $p; art = $art; start = Get-Date; raum = $raum; an = $an }
+    if ($art -ne 'spiegel') { Log ("Auftrag $art gestartet (PID $($p.Id))" + $(if ($raum) { " — Raum $raum, an $an" } else { '' })) 'Cyan' }
     return $p
   } catch { Log "Auftrag $art liess sich nicht starten: $($_.Exception.Message)" 'Red'; return $null }
 }
@@ -267,11 +279,19 @@ function KinderPflegen {
     if (-not $lebt) {
       $dauer = [int]((Get-Date) - $k.start).TotalSeconds
       if ($k.art -ne 'spiegel') { Log "Auftrag $($k.art) fertig nach $dauer s (Code $(try { $k.p.ExitCode } catch { '?' }))" }
+      # Ein abgestürzter Raum-Lauf räumt seine .lauf-Datei nicht selbst weg.
+      if ($k.raum) { Remove-Item (Join-Path $script:LaufOrdner "$($k.raum).lauf") -Force -ErrorAction SilentlyContinue }
       continue
     }
-    if (((Get-Date) - $k.start).TotalMinutes -gt 12) {
-      Log "Auftrag $($k.art) hängt seit 12 Min — beende PID $($k.p.Id)" 'Yellow'
-      try { $k.p.Kill() } catch { }
+    # „beide" im Raum sind zwei Modellaufrufe hintereinander (je bis 7 Min) — deshalb mehr Luft.
+    $grenze = if ($k.art -eq 'raum') { 16 } else { 12 }
+    if (((Get-Date) - $k.start).TotalMinutes -gt $grenze) {
+      Log "Auftrag $($k.art) hängt seit $grenze Min — beende PID $($k.p.Id) samt Kindern" 'Yellow'
+      BaumBeenden $k.p
+      if ($k.raum) {
+        Remove-Item (Join-Path $script:LaufOrdner "$($k.raum).lauf") -Force -ErrorAction SilentlyContinue
+        try { RaumZeileDazu $k.raum 'system' "Abgebrochen: nach $grenze Minuten keine Antwort." | Out-Null } catch { }
+      }
       continue
     }
     $bleibt += $k
@@ -279,6 +299,149 @@ function KinderPflegen {
   $script:Kinder = $bleibt
 }
 function DenktGerade { return (@($script:Kinder | Where-Object { $_.art -ne 'spiegel' }).Count -gt 0) }
+
+# Kindprozesse samt ihren Kindern beenden: claude.exe bzw. codex.exe hängen unter powershell.exe
+# und überlebten ein bloßes Kill(). Der Zug liefe weiter und schriebe nach dem Stopp noch in den
+# Raum. cmd /c schluckt die Ausgabe von taskkill; ein 2>&1 in PowerShell 5.1 würde bei
+# ErrorActionPreference Stop schon an der ersten stderr-Zeile werfen.
+function BaumBeenden($p) {
+  try { $null = & cmd.exe /c "taskkill /PID $($p.Id) /T /F >nul 2>&1" } catch { }
+  try { if (-not $p.HasExited) { $p.Kill() } } catch { }
+}
+
+# ── Gesprächsraum an der Tür (11.09.2026) ────────────────────────────────────────────────
+# Ein Raum ist eine Datei in Johns lokalem Ordner: C:\dev\john\coaching\raum\<id>.jsonl. Die Tür
+# liest und schreibt nur Zeilen. Das dauert Millisekunden, und sie ruft nie ein Modell. Gedacht
+# wird im Kindprozess (john-auftrag.ps1 -Art raum); der gibt auch das Signal an die Rezeption.
+# Vertrag: docs/protokoll.md › Gesprächsraum.
+$script:RaumOrdner = Join-Path $JohnDir 'coaching\raum'
+$script:LaufOrdner = Join-Path $Hier '.auftraege'
+$script:RaumWarte  = New-Object System.Collections.ArrayList   # @{raum; an; seit}
+
+function RaumPfad([string]$id) { return (Join-Path $script:RaumOrdner "$id.jsonl") }
+function RaumGueltig([string]$id) { return ($id -match '^[a-z0-9-]{1,40}$') }
+# Derselbe Mutex-Name wie in john-auftrag.ps1 › RaumAnhaengen.
+function RaumSperre([string]$id, [scriptblock]$tun) {
+  $m = New-Object Threading.Mutex($false, "Local\john-raum-$id")
+  $hat = $false
+  try {
+    try { $hat = $m.WaitOne(2000) } catch [Threading.AbandonedMutexException] { $hat = $true }
+    return (& $tun)
+  } finally { if ($hat) { $m.ReleaseMutex() }; $m.Dispose() }
+}
+function RaumZeilen([string]$id) {
+  $thema = ''; $erstellt = ''; $zuege = New-Object System.Collections.Generic.List[object]
+  $f = RaumPfad $id
+  if (Test-Path $f) {
+    foreach ($z in [IO.File]::ReadAllLines($f, [Text.Encoding]::UTF8)) {
+      if (-not $z.Trim()) { continue }
+      try { $o = $z | ConvertFrom-Json } catch { continue }
+      if ($o.meta) { $thema = [string]$o.thema; $erstellt = [string]$o.erstellt; continue }
+      $zuege.Add($o)
+    }
+  }
+  return @{ thema = $thema; erstellt = $erstellt; zuege = $zuege.ToArray() }
+}
+function RaumZeileDazu([string]$id, [string]$wer, [string]$text) {
+  return (RaumSperre $id {
+    $r = RaumZeilen $id
+    $max = 0; foreach ($z in $r.zuege) { if ([int]$z.zug -gt $max) { $max = [int]$z.zug } }
+    $n = $max + 1
+    $zeile = (@{ zug = $n; wer = $wer; zeit = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz'); text = $text; weitergeben = $true } | ConvertTo-Json -Compress -Depth 3)
+    [IO.File]::AppendAllText((RaumPfad $id), $zeile + "`n", $Utf8NoBom)
+    $n
+  })
+}
+function RaumNeu([string]$thema) {
+  if (-not (Test-Path $script:RaumOrdner)) { New-Item -ItemType Directory -Force $script:RaumOrdner | Out-Null }
+  $s = $thema.ToLower().Replace('ä','ae').Replace('ö','oe').Replace('ü','ue').Replace('ß','ss')
+  $s = ($s -replace '[^a-z0-9]+', '-').Trim('-')
+  if ($s.Length -gt 22) { $s = $s.Substring(0, 22).Trim('-') }
+  if (-not $s) { $s = 'raum' }
+  $id = "$s-" + (Get-Date).ToString('MMdd-HHmm')
+  $i = 2; $basis = $id
+  while (Test-Path (RaumPfad $id)) { $id = "$basis-$i"; $i++ }
+  $meta = (@{ meta = $true; thema = $thema; erstellt = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz') } | ConvertTo-Json -Compress)
+  [IO.File]::WriteAllText((RaumPfad $id), $meta + "`n", $Utf8NoBom)
+  return $id
+}
+function RaumKind([string]$id) { return @($script:Kinder | Where-Object { $_.art -eq 'raum' -and $_.raum -eq $id })[0] }
+function RaumLauf([string]$id) {
+  $f = Join-Path $script:LaufOrdner "$id.lauf"
+  if (-not (Test-Path $f)) { return $null }
+  try { return ([IO.File]::ReadAllText($f, [Text.Encoding]::UTF8) | ConvertFrom-Json) } catch { return $null }
+}
+# Wer gerade spricht: der Kindprozess ist die Wahrheit, die .lauf-Datei sagt nur, WER von beiden.
+# Eine .lauf-Datei ohne lebendes Kind stammt aus einem abgestürzten Lauf und zählt nicht.
+function RaumLaeuft([string]$id) {
+  $k = RaumKind $id
+  if (-not $k) { return $null }
+  $l = RaumLauf $id
+  return @{ an = $(if ($l -and $l.an) { [string]$l.an } else { $k.an }); seit = $(if ($l -and $l.seit) { [string]$l.seit } else { $k.start.ToString('o') }) }
+}
+function RaumWartet([string]$id) { return @($script:RaumWarte | Where-Object { $_.raum -eq $id } | ForEach-Object { $_.an }) }
+function RaumListe {
+  if (-not (Test-Path $script:RaumOrdner)) { return @() }
+  $liste = @()
+  foreach ($f in @(Get-ChildItem $script:RaumOrdner -Filter '*.jsonl' -File | Sort-Object LastWriteTime -Descending | Select-Object -First 50)) {
+    $id = [IO.Path]::GetFileNameWithoutExtension($f.Name)
+    $r = RaumZeilen $id
+    $liste += @{ id = $id; thema = $r.thema; zuege = $r.zuege.Count
+                 zuletzt = $(if ($r.zuege.Count) { [string]$r.zuege[-1].zeit } else { $r.erstellt })
+                 laeuft = [bool](RaumKind $id); wartet = @(RaumWartet $id) }
+  }
+  return $liste
+}
+# Einreihen: schreibt Bene zweimal, bevor jemand geantwortet hat, entsteht kein zweiter Lauf.
+# Der wartende Eintrag wird erweitert (john + madeleine = beide).
+function RaumEinreihen([string]$id, [string]$an) {
+  $da = @($script:RaumWarte | Where-Object { $_.raum -eq $id })[0]
+  if ($da) { if ($da.an -ne $an) { $da.an = 'beide' }; return }
+  [void]$script:RaumWarte.Add(@{ raum = $id; an = $an; seit = Get-Date })
+}
+# Stoppen: Warteschlange des Raums leeren, laufenden Zug samt Modellprozess beenden, eine
+# Hinweiszeile in den Raum, der Rezeption Bescheid geben. Kommt der Stopp VON der Rezeption
+# (Handy, über den Puls), wird sie nicht noch einmal benachrichtigt.
+function RaumStoppen([string]$id, [string]$wer, [switch]$OhneMelden) {
+  $weg = @($script:RaumWarte | Where-Object { $_.raum -eq $id })
+  foreach ($w in $weg) { $script:RaumWarte.Remove($w) }
+  $lauf = RaumLauf $id
+  $kind = RaumKind $id
+  if ($kind) { BaumBeenden $kind.p }
+  if (-not $OhneMelden -and $lauf -and $lauf.jobId) { HubSenden 'stopp' @{ id = [string]$lauf.jobId; wer = $wer } | Out-Null }
+  Remove-Item (Join-Path $script:LaufOrdner "$id.lauf") -Force -ErrorAction SilentlyContinue
+  $gestoppt = [bool]$kind -or $weg.Count -gt 0
+  if ($gestoppt) {
+    $wen = if ($kind -and $lauf -and $lauf.an) { @{ john = 'John'; madeleine = 'Madeleine' }[[string]$lauf.an] } else { $null }
+    $satz = 'Gestoppt' + $(if ($wer -eq 'handy') { ' von einem anderen Gerät' } else { '' }) + $(if ($wen) { " — $wen hatte noch nicht geantwortet" } else { '' }) + '.'
+    RaumZeileDazu $id 'system' $satz | Out-Null
+    Log "Raum $id gestoppt ($wer)" 'Yellow'
+  }
+  return $gestoppt
+}
+function LiesKoerper($ctx) {
+  try {
+    $sr = New-Object IO.StreamReader($ctx.Request.InputStream, [Text.Encoding]::UTF8)
+    $roh = $sr.ReadToEnd(); $sr.Close()
+    if (-not $roh.Trim()) { return $null }
+    return ($roh | ConvertFrom-Json)
+  } catch { return $null }
+}
+
+# Seit dem Gesprächsraum beantwortet die Tür Privates. Deshalb gibt es kein
+# Access-Control-Allow-Origin: * mehr: jede fremde Seite in Benes Browser könnte sonst seine
+# Gespräche lesen oder einen Zug auslösen. Erlaubt sind die eigene Compass-Instanz und lokale
+# Seiten. Anfragen ohne Origin (PowerShell, curl, Aufgaben) kommen nicht aus einer fremden
+# Webseite und bleiben erlaubt. Handlungen gehen nur per POST — ein <img src=…/wecken> einer
+# fremden Seite schickt keinen Origin und darf deshalb nichts auslösen.
+$script:TuerErlaubt = @('https://bene.vishnuartists.com')
+$extra = LiesEnv 'JOHN_TUER_ORIGINS' ''
+if ($extra) { $script:TuerErlaubt += @($extra -split '[,\s]+' | Where-Object { $_ }) }
+function UrsprungOk([string]$o) {
+  if (-not $o) { return $true }
+  if ($script:TuerErlaubt -contains $o) { return $true }
+  return ($o -match '^https?://(localhost|127\.0\.0\.1)(:\d+)?$')
+}
 
 # ── Takt: Johns eigener Rhythmus ─────────────────────────────────────────────────────────
 # Arbeitsfenster mit Absicht: Mo–Fr 6:30–21:30. Das Wochenende gehört Familie, Sport und
@@ -323,6 +486,8 @@ function StandObjekt {
     denkt = (DenktGerade)
     denktSeit = $(if ($kind) { $kind.start.ToString('o') } else { $null })
     denktAn = $(if ($kind) { $kind.art } else { $null })
+    denktRaum = $(if ($kind -and $kind.raum) { $kind.raum } else { $null })
+    raumWarte = $script:RaumWarte.Count
     takt = @{ letzter = $(if ($script:LetzterTakt -gt [datetime]::MinValue) { $script:LetzterTakt.ToString('o') } else { $null })
               minuten = $TaktMinuten; imFenster = (TaktFenster (Get-Date)); aus = [bool]$OhneTakt }
     hub = @{ adresse = $(if ($OhneHub) { $null } else { $Hub }); offen = $script:HubOffen
@@ -404,15 +569,26 @@ try {
       if ($ctx) {
         try {
           $res = $ctx.Response
-          $res.Headers['Access-Control-Allow-Origin'] = '*'
-          $res.Headers['Access-Control-Allow-Headers'] = 'Content-Type'
-          $res.Headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
-          # Chrome verlangt das für Anfragen aus dem Netz an eine lokale Adresse.
-          $res.Headers['Access-Control-Allow-Private-Network'] = 'true'
+          $herkunft = [string]$ctx.Request.Headers['Origin']
+          $methode = $ctx.Request.HttpMethod
           $res.Headers['Cache-Control'] = 'no-store'
+          $res.Headers['Vary'] = 'Origin'
+          if ($herkunft -and (UrsprungOk $herkunft)) {
+            $res.Headers['Access-Control-Allow-Origin'] = $herkunft
+            $res.Headers['Access-Control-Allow-Headers'] = 'Content-Type'
+            $res.Headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+            # Chrome verlangt das für Anfragen aus dem Netz an eine lokale Adresse.
+            $res.Headers['Access-Control-Allow-Private-Network'] = 'true'
+          }
           $pfad = [Uri]::UnescapeDataString($ctx.Request.Url.AbsolutePath).TrimEnd('/')
           if ($pfad -eq '') { $pfad = '/' }
-          if ($ctx.Request.HttpMethod -eq 'OPTIONS') { $res.StatusCode = 204; $res.Close() }
+          $handlung = $pfad -in @('/wecken', '/takt', '/stopp', '/raum/weitergeben', '/__stop') -or ($pfad -eq '/raum' -and $methode -ne 'GET')
+          if (-not (UrsprungOk $herkunft)) {
+            Log "Tür: fremde Herkunft abgewiesen ($herkunft → $pfad)" 'Yellow'
+            SendJson $ctx @{ ok = $false; fehler = 'Diese Tür antwortet nur Benes eigenen Seiten.' } 403
+          }
+          elseif ($methode -eq 'OPTIONS') { $res.StatusCode = 204; $res.Close() }
+          elseif ($handlung -and $methode -ne 'POST') { SendJson $ctx @{ ok = $false; fehler = "$pfad nur per POST" } 405 }
           elseif ($pfad -eq '/stand') { ProbeStarten; SendJson $ctx (StandObjekt) }
           elseif ($pfad -eq '/wecken') {
             $r = Wecken
@@ -423,6 +599,75 @@ try {
             if (DenktGerade) { SendJson $ctx @{ ok = $false; fehler = 'John denkt schon' } 409 }
             else { $p = KindStarten 'takt' $null; $script:LetzterTakt = Get-Date; SendJson $ctx @{ ok = [bool]$p } }
           }
+          # ---- Gesprächsraum ----
+          elseif ($pfad -eq '/raeume') { SendJson $ctx @{ ok = $true; raeume = @(RaumListe) } }
+          elseif ($pfad -eq '/raum' -and $methode -eq 'GET') {
+            $id = [string]$ctx.Request.QueryString['id']
+            $seit = 0; [void][int]::TryParse([string]$ctx.Request.QueryString['seit'], [ref]$seit)
+            if (-not (RaumGueltig $id)) { SendJson $ctx @{ ok = $false; fehler = 'id fehlt oder ist ungültig' } 400 }
+            elseif (-not (Test-Path (RaumPfad $id))) { SendJson $ctx @{ ok = $false; fehler = "Raum $id gibt es nicht" } 404 }
+            else {
+              $r = RaumZeilen $id
+              SendJson $ctx @{ ok = $true; id = $id; thema = $r.thema; zuege = @($r.zuege | Where-Object { [int]$_.zug -gt $seit })
+                               laeuft = (RaumLaeuft $id); wartet = @(RaumWartet $id) }
+            }
+          }
+          elseif ($pfad -eq '/raum') {
+            $k = LiesKoerper $ctx
+            $text = if ($k) { ([string]$k.text).Trim() } else { '' }
+            $an = if ($k) { [string]$k.an } else { '' }
+            $id = if ($k -and $k.id) { [string]$k.id } else { '' }
+            if (-not $text) { SendJson $ctx @{ ok = $false; fehler = 'text fehlt' } 400 }
+            elseif ($text.Length -gt 8000) { SendJson $ctx @{ ok = $false; fehler = 'text zu lang (höchstens 8000 Zeichen)' } 413 }
+            elseif ($an -notin @('john', 'madeleine', 'beide')) { SendJson $ctx @{ ok = $false; fehler = 'an muss john, madeleine oder beide sein' } 400 }
+            elseif ($id -and -not (RaumGueltig $id)) { SendJson $ctx @{ ok = $false; fehler = 'id ist ungültig' } 400 }
+            elseif ($id -and -not (Test-Path (RaumPfad $id))) { SendJson $ctx @{ ok = $false; fehler = "Raum $id gibt es nicht" } 404 }
+            else {
+              if (-not $id) {
+                $thema = if ($k.thema) { ([string]$k.thema).Trim() } else { '' }
+                if (-not $thema) { $thema = ($text -split "`r?`n")[0]; if ($thema.Length -gt 60) { $thema = $thema.Substring(0, 60).TrimEnd() + '…' } }
+                $id = RaumNeu $thema
+              }
+              $n = RaumZeileDazu $id 'bene' $text
+              RaumEinreihen $id $an
+              # wartet: jemand anderes denkt gerade, oder ein anderer Raum steht vorn in der Schlange.
+              $vorn = @($script:RaumWarte)[0]
+              $wartet = (DenktGerade) -or ($vorn -and $vorn.raum -ne $id)
+              Log ("Raum $id : Bene hat Zug $n geschrieben ($($text.Length) Zeichen), an $an" + $(if ($wartet) { ' — wartet' } else { '' }))
+              SendJson $ctx @{ ok = $true; id = $id; zug = $n; wartet = [bool]$wartet }
+            }
+          }
+          elseif ($pfad -eq '/raum/weitergeben') {
+            $k = LiesKoerper $ctx
+            $id = if ($k) { [string]$k.id } else { '' }
+            $zug = 0; if ($k) { [void][int]::TryParse([string]$k.zug, [ref]$zug) }
+            if (-not (RaumGueltig $id) -or $zug -lt 1) { SendJson $ctx @{ ok = $false; fehler = 'id und zug nötig' } 400 }
+            elseif (-not (Test-Path (RaumPfad $id))) { SendJson $ctx @{ ok = $false; fehler = "Raum $id gibt es nicht" } 404 }
+            else {
+              $wert = -not ($k.PSObject.Properties['weitergeben'] -and $k.weitergeben -eq $false)
+              $gefunden = RaumSperre $id {
+                $f = RaumPfad $id; $treffer = $false
+                $zeilen = @([IO.File]::ReadAllLines($f, [Text.Encoding]::UTF8) | Where-Object { $_.Trim() })
+                for ($i = 0; $i -lt $zeilen.Count; $i++) {
+                  try { $o = $zeilen[$i] | ConvertFrom-Json } catch { continue }
+                  if (-not $o.meta -and [int]$o.zug -eq $zug) {
+                    $o | Add-Member -NotePropertyName weitergeben -NotePropertyValue $wert -Force
+                    $zeilen[$i] = ($o | ConvertTo-Json -Compress -Depth 3); $treffer = $true
+                  }
+                }
+                if ($treffer) { [IO.File]::WriteAllText($f, (($zeilen -join "`n") + "`n"), $Utf8NoBom) }
+                $treffer
+              }
+              if ($gefunden) { SendJson $ctx @{ ok = $true; id = $id; zug = $zug; weitergeben = $wert } }
+              else { SendJson $ctx @{ ok = $false; fehler = "Zug $zug gibt es in $id nicht" } 404 }
+            }
+          }
+          elseif ($pfad -eq '/stopp') {
+            $k = LiesKoerper $ctx
+            $id = if ($k) { [string]$k.id } else { '' }
+            if (-not (RaumGueltig $id)) { SendJson $ctx @{ ok = $false; fehler = 'id fehlt oder ist ungültig' } 400 }
+            else { SendJson $ctx @{ ok = $true; gestoppt = [bool](RaumStoppen $id 'bene') } }
+          }
           elseif ($pfad -eq '/__stop') { Log 'Tür schließt (per /__stop)' 'Yellow'; SendJson $ctx @{ ok = $true; msg = 'bye' }; $script:Ende = $true }
           elseif ($pfad -eq '/') {
             $s = StandObjekt
@@ -430,7 +675,8 @@ try {
               '<style>body{font:14px/1.6 system-ui;margin:2rem;max-width:44rem;color:#1b1f18}code{background:#eee;padding:1px 5px;border-radius:4px}</style>' +
               '<h1>Johns Hände sind wach</h1><p>Gerät <b>' + $s.geraet + '</b>, Worker ' + $VERSION + '.</p>' +
               '<p>Cockpit-Server: ' + $(if ($s.serverLaeuft) { 'läuft' } else { 'aus' }) + ' · denkt gerade: ' + $(if ($s.denkt) { 'ja (' + $s.denktAn + ')' } else { 'nein' }) + '</p>' +
-              '<p>Diese Tür ist für die Lobby im Compass da: <code>/stand</code>, <code>/wecken</code>, <code>/takt</code>.</p>'
+              '<p>Diese Tür ist für die Lobby im Compass da: <code>/stand</code>, <code>/wecken</code>, <code>/takt</code>, ' +
+              'dazu der Gesprächsraum: <code>/raeume</code>, <code>/raum</code>, <code>/stopp</code>. Handlungen nur per POST.</p>'
             $b = [Text.Encoding]::UTF8.GetBytes($html)
             $res.StatusCode = 200; $res.ContentType = 'text/html; charset=utf-8'
             $res.ContentLength64 = $b.Length; $res.OutputStream.Write($b, 0, $b.Length); $res.Close()
@@ -449,7 +695,9 @@ try {
     HubAbholen
     if (($jetzt - $letztePflege).TotalSeconds -ge 3) { KinderPflegen; $letztePflege = $jetzt }
     if (($jetzt - $letzteProbe).TotalSeconds -ge 20) { ProbeStarten; $letzteProbe = $jetzt; StandSchreiben }
-    if (($jetzt - $letzterPuls).TotalSeconds -ge 60) { PulsSenden; $letzterPuls = $jetzt }
+    # Solange im Raum gesprochen wird, alle 10 s: ein Stopp vom Handy kommt nur über den Puls an.
+    $pulsAbstand = if (@($script:Kinder | Where-Object { $_.art -eq 'raum' }).Count) { 10 } else { 60 }
+    if (($jetzt - $letzterPuls).TotalSeconds -ge $pulsAbstand) { PulsSenden; $letzterPuls = $jetzt }
 
     # ---- 2b. Spiegel: Johns Kachel auf allen Geraeten ----
     # Ausloeser: der Server hat seinen Stapel geschrieben (Datei neuer), ein anderes Geraet hat
@@ -462,7 +710,13 @@ try {
       }
     }
 
-    # ---- 3. Johns eigener Rhythmus ----
+    # ---- 3. Gesprächsraum vor dem Takt: dort wartet ein Mensch auf eine Antwort ----
+    if ($script:RaumWarte.Count -and -not (DenktGerade)) {
+      $w = $script:RaumWarte[0]; $script:RaumWarte.RemoveAt(0)
+      if (Test-Path (RaumPfad $w.raum)) { KindStarten 'raum' $null $w.raum $w.an | Out-Null }
+    }
+
+    # ---- 3b. Johns eigener Rhythmus ----
     if (TaktFaellig) {
       $script:LetzterTakt = $jetzt
       Log 'Takt fällig — John sieht nach, was jetzt zählt' 'Cyan'

@@ -83,8 +83,8 @@ function jh_id(string $p = ''): string { return $p . bin2hex(random_bytes(6)); }
  *  nachsehen, einen Punkt abraeumen, einen Auftrag stellen. Er kann Johns Stapel nicht
  *  ueberschreiben, keinen Auftrag beanspruchen und kein Ergebnis faelschen. */
 const JH_DARF = [
-    'geraet'  => ['stand','puls','stapel','punkt','auftrag','auftraege','nimm','ergebnis','log','spiegel','stapelstand'],
-    'browser' => ['stand','punkt','auftrag','stapelstand'],
+    'geraet'  => ['stand','puls','stapel','punkt','auftrag','auftraege','nimm','ergebnis','log','spiegel','stapelstand','stopp'],
+    'browser' => ['stand','punkt','auftrag','stapelstand','stopp'],
 ];
 
 /**
@@ -139,7 +139,7 @@ function jh_aufraeumen(array $s): array {
     foreach ($s['auftraege'] as $a) {
         $alter = jh_alter($a['erstellt'] ?? null) ?? 0;
         $status = (string)($a['status'] ?? 'offen');
-        if ($status === 'fertig' && $alter > JH_ERGEBNIS_D * 86400) continue;
+        if (($status === 'fertig' || $status === 'gestoppt') && $alter > JH_ERGEBNIS_D * 86400) continue;
         if ($status === 'offen'  && $alter > JH_AUFTRAG_H * 3600) { $a['status'] = 'verfallen'; }
         if ($status === 'laeuft') {
             $seit = jh_alter($a['genommen'] ?? null);
@@ -282,6 +282,18 @@ function jh_logzeile(array $s, string $art, string $text, ?string $geraet = null
     return $s;
 }
 
+/** Die letzten 20 Raum-Zuege, ohne Text: damit zeigt das Handy den Stand eines Raums. */
+function jh_raeume(array $s): array {
+    $r = [];
+    foreach ($s['auftraege'] as $a) {
+        if (($a['art'] ?? '') !== 'raum') continue;
+        $r[] = ['id' => $a['id'], 'raum' => $a['raum'] ?? '', 'thema' => $a['thema'] ?? '', 'zug' => $a['zug'] ?? 0,
+                'an' => $a['an'] ?? '', 'status' => $a['status'] ?? '', 'erstellt' => $a['erstellt'] ?? null,
+                'fertig' => $a['fertig'] ?? null, 'notiz' => $a['ergebnis']['notiz'] ?? null];
+    }
+    return array_slice($r, -20);
+}
+
 /** Die Antwort auf „wie geht es John?" — die einzige Frage, die jeder Klient stellt. */
 function jh_stand_antwort(array $s): array {
     $geraete = [];
@@ -321,6 +333,7 @@ function jh_stand_antwort(array $s): array {
         'geraete' => $geraete,
         'stapel' => $s['stapel'],
         'compass' => jh_compass($s),
+        'raeume' => jh_raeume($s),
         'auftraege' => ['offen' => $offen, 'laufend' => $laeuft, 'fertig24' => $fertig],
         'log' => array_slice($s['log'], -20),
     ];
@@ -367,8 +380,14 @@ case 'puls':
             $s = jh_logzeile($s, 'start', ($vorher === null ? 'Neues Gerät' : 'Gerät wieder wach') . ": $name", $name);
         }
         $offen = 0;
-        foreach ($s['auftraege'] as $a) { if ((string)($a['status'] ?? '') === 'offen') $offen++; }
-        return [$s, ['ok' => true, 'auftraege' => $offen, 'jetzt' => jh_jetzt(), 'compassTs' => jh_compass_ts(jh_compass($s))]];
+        // Raum-Zuege zaehlen nicht: die nimmt der Kindprozess, der sie angelegt hat, sofort selbst.
+        foreach ($s['auftraege'] as $a) { if ((string)($a['status'] ?? '') === 'offen' && (string)($a['art'] ?? '') !== 'raum') $offen++; }
+        // Gestoppte Auftraege, die DIESES Geraet hatte (letzte Stunde): so erreicht ein Stopp vom Handy den Kindprozess.
+        $stopp = [];
+        foreach ($s['auftraege'] as $a) {
+            if ((string)($a['status'] ?? '') === 'gestoppt' && (string)($a['nimmt'] ?? '') === $name && (jh_alter($a['gestoppt'] ?? null) ?? 99999) < 3600) $stopp[] = (string)$a['id'];
+        }
+        return [$s, ['ok' => true, 'auftraege' => $offen, 'jetzt' => jh_jetzt(), 'compassTs' => jh_compass_ts(jh_compass($s)), 'stopp' => $stopp]];
     }));
 
 case 'stapel':
@@ -426,9 +445,22 @@ case 'auftrag':
     if (!$post) jh_fehler('nur POST', 400);
     $art  = jh_text($koerper['art'] ?? 'frage', 20);
     $text = jh_text($koerper['text'] ?? '', 2000);
-    if ($text === '') jh_fehler('text fehlt', 400);
-    if (!in_array($art, ['stapel', 'board', 'chat', 'frage', 'takt', 'coach'], true)) jh_fehler('unbekannte art', 400);
-    jh_ende(jh_schreiben(function (array $s) use ($art, $text, $koerper) {
+    if (!in_array($art, ['stapel', 'board', 'chat', 'frage', 'takt', 'coach', 'raum'], true)) jh_fehler('unbekannte art', 400);
+    /* Gespraechsraum (11.09.2026): der Text liegt auf dem Geraet, hier nur das Signal. Die Rezeption
+       weist Text ab, statt ihn stillschweigend zu speichern — sonst waere die Regel nur ein Wunsch. */
+    $raumFelder = [];
+    if ($art === 'raum') {
+        if ($jh_klasse !== 'geraet') jh_fehler('einen Raum-Zug legt nur ein Geraet an', 403);
+        if ($text !== '') jh_fehler('raum traegt keinen Text — das Gespraech liegt auf dem Geraet', 400);
+        $raumId = jh_text($koerper['raum'] ?? '', 40);
+        if (!preg_match('/^[a-z0-9-]{1,40}$/', $raumId)) jh_fehler('raum-Kennung ungueltig ([a-z0-9-]{1,40})', 400);
+        $an = jh_text($koerper['an'] ?? '', 20);
+        if (!in_array($an, ['john', 'madeleine'], true)) jh_fehler('an: john oder madeleine', 400);
+        $raumFelder = ['raum' => $raumId, 'zug' => max(0, (int)($koerper['zug'] ?? 0)), 'an' => $an, 'thema' => jh_text($koerper['thema'] ?? '', 80)];
+    } elseif ($text === '') {
+        jh_fehler('text fehlt', 400);
+    }
+    jh_ende(jh_schreiben(function (array $s) use ($art, $text, $koerper, $raumFelder) {
         $offen = 0;
         foreach ($s['auftraege'] as $a) { if ((string)($a['status'] ?? '') === 'offen') $offen++; }
         if ($offen >= 20) return [$s, ['ok' => false, 'fehler' => 'zu viele offene Aufträge']];
@@ -439,9 +471,11 @@ case 'auftrag':
             'dringend' => (bool)($koerper['dringend'] ?? false),
             'erstellt' => jh_jetzt(), 'status' => 'offen',
             'nimmt' => null, 'genommen' => null, 'ergebnis' => null,
-        ];
+        ] + $raumFelder;
         // Nur Betrieb ins Logbuch, nie den Inhalt: bei coach steht dort sonst die Frage eines Mitglieds.
-        $s = jh_logzeile($s, 'auftrag', "$art: neuer Auftrag (" . mb_strlen($text) . ' Zeichen)');
+        $s = jh_logzeile($s, 'auftrag', $art === 'raum'
+            ? 'raum ' . $raumFelder['raum'] . ': Zug ' . $raumFelder['zug'] . ' an ' . $raumFelder['an']
+            : "$art: neuer Auftrag (" . mb_strlen($text) . ' Zeichen)');
         return [$s, ['ok' => true, 'id' => $id]];
     }));
 
@@ -451,6 +485,7 @@ case 'auftraege':
     $liste = [];
     foreach ($s['auftraege'] as $a) {
         if ((string)($a['status'] ?? '') !== 'offen') continue;
+        if (($a['art'] ?? '') === 'raum') continue;   // der Text liegt nur auf dem anlegenden Geraet
         $liste[] = ['id' => $a['id'], 'art' => $a['art'], 'text' => $a['text'], 'wer' => $a['wer'], 'erstellt' => $a['erstellt'], 'dringend' => $a['dringend'] ?? false,
                     'thema' => $a['thema'] ?? null, 'vorname' => $a['vorname'] ?? null, 'form' => $a['form'] ?? null];
     }
@@ -481,10 +516,13 @@ case 'ergebnis':
     if (!$post) jh_fehler('nur POST', 400);
     $id = jh_text($koerper['id'] ?? '', 40);
     if ($id === '') jh_fehler('id fehlt', 400);
-    jh_ende(jh_schreiben(function (array $s) use ($id, $koerper) {
+    $antwortE = jh_schreiben(function (array $s) use ($id, $koerper) {
         foreach ($s['auftraege'] as $i => $a) {
             if (($a['id'] ?? '') !== $id) continue;
+            if ((string)($a['status'] ?? '') === 'gestoppt') return [$s, ['ok' => false, 'fehler' => 'gestoppt', 'code' => 409]];
+            if (($a['art'] ?? '') === 'raum' && jh_text($koerper['text'] ?? '', 10) !== '') return [$s, ['ok' => false, 'fehler' => 'raum traegt keinen Text', 'code' => 400]];
             $s['auftraege'][$i]['status'] = 'fertig';
+            $s['auftraege'][$i]['fertig'] = jh_jetzt();
             $s['auftraege'][$i]['ergebnis'] = [
                 'ok' => (bool)($koerper['ok'] ?? true),
                 'text' => jh_text($koerper['text'] ?? '', 4000),
@@ -494,8 +532,28 @@ case 'ergebnis':
             $s = jh_logzeile($s, ((bool)($koerper['ok'] ?? true)) ? 'fertig' : 'fehler', (string)$a['art'] . ': ' . (((bool)($koerper['ok'] ?? true)) ? 'Antwort liegt vor (' . mb_strlen((string)($koerper['text'] ?? '')) . ' Zeichen)' : 'gescheitert'), (string)($a['nimmt'] ?? ''));
             return [$s, ['ok' => true]];
         }
-        return [$s, ['ok' => false, 'fehler' => 'Auftrag nicht gefunden']];
-    }));
+        return [$s, ['ok' => false, 'fehler' => 'Auftrag nicht gefunden', 'code' => 404]];
+    });
+    jh_ende($antwortE, (int)($antwortE['code'] ?? 200) >= 400 ? (int)$antwortE['code'] : 200);
+
+case 'stopp':
+    if (!$post) jh_fehler('nur POST', 400);
+    $id = jh_text($koerper['id'] ?? '', 40);
+    if ($id === '') jh_fehler('id fehlt', 400);
+    $antwortS = jh_schreiben(function (array $s) use ($id, $koerper, $jh_klasse) {
+        foreach ($s['auftraege'] as $i => $a) {
+            if (($a['id'] ?? '') !== $id) continue;
+            $st = (string)($a['status'] ?? '');
+            if (!in_array($st, ['offen', 'laeuft'], true)) return [$s, ['ok' => false, 'fehler' => "schon $st", 'code' => 409]];
+            $s['auftraege'][$i]['status'] = 'gestoppt';
+            $s['auftraege'][$i]['gestoppt'] = jh_jetzt();
+            $s['auftraege'][$i]['fertig'] = jh_jetzt();
+            $s = jh_logzeile($s, 'stopp', (string)($a['art'] ?? '') . ' gestoppt (' . jh_text($koerper['wer'] ?? $jh_klasse, 20) . ')', (string)($a['nimmt'] ?? ''));
+            return [$s, ['ok' => true, 'war' => $st]];
+        }
+        return [$s, ['ok' => false, 'fehler' => 'Auftrag nicht gefunden', 'code' => 404]];
+    });
+    jh_ende($antwortS, (int)($antwortS['code'] ?? 200) >= 400 ? (int)$antwortS['code'] : 200);
 
 case 'log':
     if (!$post) jh_fehler('nur POST', 400);
@@ -536,5 +594,5 @@ case 'stapelstand':
     }));
 
 default:
-    jh_fehler('unbekannt: w=' . jh_text($was, 40) . ' (stand, puls, stapel, punkt, auftrag, auftraege, nimm, ergebnis, log, spiegel, stapelstand)', 400);
+    jh_fehler('unbekannt: w=' . jh_text($was, 40) . ' (stand, puls, stapel, punkt, auftrag, auftraege, nimm, ergebnis, log, spiegel, stapelstand, stopp)', 400);
 }

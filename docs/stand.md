@@ -3,7 +3,7 @@
 Diese Datei wird bei **jeder** Änderung nachgezogen. Sie ist die einzige Stelle, an der die
 nächste Session sieht, wo sie steht.
 
-## Läuft (Stand 11.09.2026, 10:20)
+## Läuft (Stand 11.09.2026, 12:10)
 
 | Teil | Zustand | geprüft womit |
 |---|---|---|
@@ -21,6 +21,9 @@ nächste Session sieht, wo sie steht.
 | **Takt auf der Kachel** | „🔔 Von selbst gesehen · Johns Takt HH:MM" mit „In den Stapel sortieren" / „Gesehen" | Browser, drei Funde des 09:30-Takts sichtbar |
 | **Erster Takttag** 11.09. | 06:30 und 09:30 mit Funden, dazwischen „nichts Neues" | Hash-Bremse war wirkungslos (Uhrzeit im Hash) — seit 10:15 behoben |
 | **Demo bleibt sauber** | Produkt-Build nimmt Lobby und Rezeption heraus | Wortprüfung bestanden, `compass-john-lobby.js` nicht im Demo-Ordner |
+| **Gesprächsraum — Backend** (Worker 1.2.0) | Tür: `/raeume`, `/raum`, `/raum/weitergeben`, `/stopp`; Warteschlange vor dem Takt; Rezeption: Art `raum` ohne Text, Status `gestoppt`, `w=stopp`, `puls.stopp`; Madeleine denkt im Worker über `john-ki.ps1` (Codex) | Rezeption-Prüfstand 21/21 lokal, live deployt; Tür-Prüfstand 29/29 am laufenden Worker: echte Antworten von John, Stopp mitten in „beide" (auch mit lebendem `codex.exe` — nichts überlebt), Stopp vom Handy über die Rezeption binnen 10 s; Rezeption kennt Status, keinen Satz Inhalt |
+| **Tür nur für eigene Seiten** | `Allow-Origin: *` ist weg: fremde Herkunft 403, Handlungen nur per POST (405) | im Tür-Prüfstand (Abschnitt A) |
+| **Tür-Attrappe** für die Oberfläche | `tools/tuer-attrappe.php` — derselbe Vertrag mit gespielten Antworten | 10 Prüfungen gegen `php -S` |
 
 ## Fehlt noch
 
@@ -31,11 +34,18 @@ nächste Session sieht, wo sie steht.
 2. ~~Raumschiff-Subdomain~~ erledigt 11.09.: `raumschiff.vishnuartists.com` leitet aufs Raumschiff. Repo auf GitHub angelegt (öffentlich); Push macht Bene.
 3. **Bene digital: Freigabe im Compass** statt auf der Seite, und der erste echte Login-Durchlauf.
 4. **Zweites Gerät** — `john-aufgaben.ps1 -Register` mit `JOHN_HUB_TOKEN` und `JOHN_GERAET`.
-5. **`john-ki.ps1` herausziehen** (ADR 0003).
+5. **`john-ki.ps1`** (ADR 0003): für den Worker gibt es sie seit 11.09. (Claude + Codex + Madeleines Kopf); der
+   Cockpit-Server lädt weiterhin seinen eigenen Stand (`john-madeleine.ps1`). Zusammenführen an einem ruhigen Tag.
 6. **Takt-Quote messen** bis 18.09.: wie viele Takte gedacht, wie viele gehandelt. Unter einem Drittel → 60 min.
 7. **Zeitvergleich im Compass selbst:** `stapelStandMischen` in dashboard.html vergleicht Zeitstempel als
    Text („…+02:00" gegen „…Z") — dabei gewinnt manchmal der ältere. Die Lobby umgeht es mit echtem
    Zeitvergleich; im Compass selbst ist es eine Zeile für eine Session, die dashboard.html gerade hält.
+8. **Gesprächsraum — Oberfläche:** baut Astra (Übergabe `madelene-agent/docs/integration-gespraechsraum.md`), als
+   `compass/compass-gespraechsraum.js` per PR. Beim Einbau: `<script>` in `dashboard.html`, Ausschluss in
+   `build-compass-produkt.ps1`, Prüfung am echten Worker.
+9. **Offene Entscheidung für Bene:** darf er am Handy in den Raum **schreiben**? Dann läge sein Satz einmal in der
+   Rezeption. Bis dahin: am Handy Stand und Stopp.
+
 ## Kleine Wahrheiten, die man sonst zweimal lernt
 
 - Der Cockpit-Server meldet bei http.sys nur `http://localhost:8787/` an. Über `127.0.0.1` kommt
@@ -44,6 +54,9 @@ nächste Session sieht, wo sie steht.
 - Deutsche Anführungszeichen in doppelt gequoteten PowerShell-Strings beenden den String, wenn das
   schließende Zeichen ein gerades `"` ist. Zwei Läufe sind daran gescheitert, der Parser meldet es
   nur manchmal — im Zweifel Anführungszeichen aus Code-Strings heraushalten.
+- Ein Kindprozess mit `$p.Kill()` zu beenden, lässt `claude.exe`/`codex.exe` darunter weiterlaufen — der Zug
+  hätte nach dem Stopp noch in den Raum geschrieben. Deshalb `taskkill /PID <id> /T /F` über `cmd /c` (ein `2>&1`
+  in PowerShell 5.1 wirft bei `ErrorActionPreference Stop` schon an der ersten stderr-Zeile).
 - `jh_leer()` gab `geraete` einmal als `stdClass` zurück; der erste Puls auf einer frischen
   Rezeption starb daran. Gefunden nur, weil die Endpunkte wirklich gelaufen sind — `php -l` war grün.
 

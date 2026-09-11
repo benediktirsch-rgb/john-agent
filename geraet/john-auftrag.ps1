@@ -11,6 +11,7 @@
     hub     einen Auftrag von der Rezeption holen, ausführen, Ergebnis zurückmelden
     frage   eine einzelne Frage beantworten (-Text), Antwort in die Rezeption
     stapel  Johns Stapel neu sortieren (nur mit Rezeption sinnvoll, siehe unten)
+    raum    einen Zug im Gesprächsraum denken (-Raum <id> -An john|madeleine|beide), Text bleibt lokal
     spiegel Johns Compass-Stapel in die Rezeption spiegeln und OKs von anderen Geraeten an den
             Cockpit-Server nachreichen (kein Claude, dauert Sekunden)
 
@@ -28,7 +29,9 @@
     soll. Diese Doppelung ist bewusst und ist als Schuld notiert (docs\adr\0003).
 #>
 param(
-  [ValidateSet('takt','hub','frage','stapel','spiegel')][string]$Art = 'takt',
+  [ValidateSet('takt','hub','frage','stapel','spiegel','raum')][string]$Art = 'takt',
+  [string]$Raum = '',
+  [ValidateSet('john','madeleine','beide')][string]$An = 'john',
   [string]$Text = '',
   [string]$Geraet = '',
   [string]$Modell = 'claude-opus-5',
@@ -78,83 +81,8 @@ function Lies([string]$pfad, [int]$maxZeichen = 4000, [int]$letzteZeilen = 0) {
   } catch { return '' }
 }
 
-# ── Claude Code im Kopflos-Modus (Benes Abo, nicht die API) ──────────────────────────────
-function Quote-Arg([string]$a) { if ($a -eq '') { return '""' }; if ($a -match '[\s"]') { return '"' + ($a -replace '"', '\"') + '"' }; return $a }
-
-function Find-ClaudeExe {
-  $kand = New-Object System.Collections.Generic.List[string]
-  $v = LiesEnv 'JOHN_CLAUDE_EXE' $null; if ($v) { $kand.Add($v) }
-  $kand.Add((Join-Path $env:USERPROFILE '.local\bin\claude.exe'))
-  $cmd = Get-Command claude -ErrorAction SilentlyContinue; if ($cmd -and $cmd.Source) { $kand.Add($cmd.Source) }
-  $wurzeln = @((Join-Path $env:APPDATA 'Claude\claude-code'))
-  foreach ($paket in @(Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Packages') -Directory -Filter 'Claude_*' -ErrorAction SilentlyContinue)) {
-    $wurzeln += (Join-Path $paket.FullName 'LocalCache\Roaming\Claude\claude-code')
-  }
-  foreach ($cc in $wurzeln) {
-    if (Test-Path $cc) {
-      Get-ChildItem $cc -Directory -ErrorAction SilentlyContinue |
-        Sort-Object { $x = $null; if ([version]::TryParse($_.Name, [ref]$x)) { $x } else { [version]'0.0' } } -Descending |
-        ForEach-Object { $kand.Add((Join-Path $_.FullName 'claude.exe')) }
-    }
-  }
-  foreach ($k in $kand) { if ($k -and (Test-Path $k)) { return $k } }
-  return $null
-}
-
-# Der Aufruf selbst. Systemprompt als Datei (passt in keine Kommandozeile), Prompt über stdin,
-# Antwort als JSON auf stdout. Kein API-Schlüssel in der Umgebung — sonst rechnet Claude Code
-# über die API ab statt über das Abo, und genau das war am 07.09. der Fehler.
-function Rufe-Claude([string]$systemText, [string]$prompt) {
-  $exe = Find-ClaudeExe
-  if (-not $exe) { throw 'NO_CLI: claude.exe nicht gefunden (JOHN_CLAUDE_EXE setzen)' }
-  $puf = Join-Path $env:LOCALAPPDATA 'john-agent\puffer'
-  if (-not (Test-Path $puf)) { New-Item -ItemType Directory -Force $puf | Out-Null }
-  $cwd = Join-Path $env:LOCALAPPDATA 'john-agent\cwd'
-  if (-not (Test-Path $cwd)) { New-Item -ItemType Directory -Force $cwd | Out-Null }
-  $sysDatei = Join-Path $puf ("system-" + [DateTime]::Now.Ticks + ".md")
-  [IO.File]::WriteAllText($sysDatei, $systemText, $Utf8NoBom)
-  $argv = @('-p','--output-format','json','--system-prompt-file',$sysDatei,'--model',$Modell,
-            '--effort',$Effort,'--max-turns','1','--no-session-persistence','--strict-mcp-config',
-            '--setting-sources','','--permission-mode','dontAsk','--tools','')
-  $psi = New-Object Diagnostics.ProcessStartInfo
-  $psi.FileName = $exe
-  $psi.Arguments = (($argv | ForEach-Object { Quote-Arg $_ }) -join ' ')
-  $psi.UseShellExecute = $false; $psi.CreateNoWindow = $true
-  $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
-  $psi.StandardOutputEncoding = $Utf8NoBom; $psi.StandardErrorEncoding = $Utf8NoBom
-  $psi.WorkingDirectory = $cwd
-  foreach ($k in @($psi.EnvironmentVariables.Keys)) { if ($k -match '^(CLAUDECODE|CLAUDE_CODE_)') { $psi.EnvironmentVariables.Remove($k) } }
-  foreach ($k in @('ANTHROPIC_API_KEY','ANTHROPIC_AUTH_TOKEN')) { if ($psi.EnvironmentVariables.ContainsKey($k)) { $psi.EnvironmentVariables.Remove($k) } }
-  $psi.EnvironmentVariables['DISABLE_AUTOUPDATER'] = '1'
-  $psi.EnvironmentVariables['CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'] = '1'
-  $t0 = Get-Date
-  try {
-    $p = [Diagnostics.Process]::Start($psi)
-    $outT = $p.StandardOutput.ReadToEndAsync(); $errT = $p.StandardError.ReadToEndAsync()
-    try {
-      $b = $Utf8NoBom.GetBytes($prompt)
-      $p.StandardInput.BaseStream.Write($b, 0, $b.Length); $p.StandardInput.BaseStream.Flush()
-    } catch [System.IO.IOException] { } finally { try { $p.StandardInput.Close() } catch { } }
-    if (-not $p.WaitForExit($TimeoutSek * 1000)) { try { $p.Kill() } catch { }; throw 'CLI_TIMEOUT' }
-    $stdout = $outT.GetAwaiter().GetResult(); $stderr = $errT.GetAwaiter().GetResult()
-    $zeile = ($stdout -split "`n" | Where-Object { $_.TrimStart().StartsWith('{') } | Select-Object -Last 1)
-    $j = $null; if ($zeile) { try { $j = $zeile | ConvertFrom-Json } catch { $j = $null } }
-    if (-not $j) {
-      $roh = (($stderr + ' ' + $stdout).Trim() -replace '\s+', ' ')
-      if ($roh.Length -gt 300) { $roh = $roh.Substring(0, 300) }
-      throw "CLI ($($p.ExitCode)): $roh"
-    }
-    if ($j.is_error) {
-      $m = [string]$j.result
-      if ($m -match '(?i)not logged in|/login|authentication|OAuth token') { throw 'NO_LOGIN' }
-      if ($m -match '(?i)credit balance') { throw 'NO_CREDIT' }
-      if ($m -match '(?i)usage limit|rate limit|limit reached|too many requests|overloaded') { throw 'LIMIT' }
-      throw "CLI: $m"
-    }
-    Log ("Claude Code: {0:n0} s, {1} Runde(n)" -f ((Get-Date) - $t0).TotalSeconds, [int]$j.num_turns)
-    return [string]$j.result
-  } finally { Remove-Item $sysDatei -Force -ErrorAction SilentlyContinue }
-}
+# ── Modelle: Claude (John) und Codex (Madeleine) stehen in john-ki.ps1 ─────────────────────
+. (Join-Path $Hier 'john-ki.ps1')
 
 # JSON aus einer Antwort schälen, die vielleicht in ```json eingepackt ist.
 function SchaeleJson([string]$t) {
@@ -398,6 +326,130 @@ function SpiegelLauf {
   return @{ ok = ($fehl -eq 0); punkte = $punkte.Count; nach = $nach }
 }
 
+# ── Gesprächsraum (11.09.2026) ───────────────────────────────────────────────────────────
+# Ein Raum ist eine Datei: C:\dev\john\coaching\raum\<raum>.jsonl. Zeile 1 = {meta, thema,
+# erstellt}, danach je Zug {zug, wer, zeit, text, weitergeben}. Der Text bleibt hier; die
+# Rezeption bekommt nur das Signal (Art raum, ohne Text — sie weist Text sogar ab).
+# John sieht, was Madeleine GESAGT hat, nicht, was sie WEISS — und umgekehrt: jeder Zug bekommt
+# Persona und Wissen des Sprechenden plus die Züge des Raums mit weitergeben != false.
+$script:RaumOrdner = Join-Path $JohnDir 'coaching\raum'
+$script:LaufOrdner = Join-Path $Hier '.auftraege'
+
+function RaumDatei([string]$id) { return (Join-Path $script:RaumOrdner "$id.jsonl") }
+function RaumLesen([string]$id) {
+  $f = RaumDatei $id
+  $thema = ''; $zuege = New-Object System.Collections.Generic.List[object]
+  if (Test-Path $f) {
+    foreach ($z in [IO.File]::ReadAllLines($f, [Text.Encoding]::UTF8)) {
+      if (-not $z.Trim()) { continue }
+      try { $o = $z | ConvertFrom-Json } catch { continue }
+      if ($o.meta) { $thema = [string]$o.thema; continue }
+      $zuege.Add($o)
+    }
+  }
+  # .ToArray() statt @($zuege): @() einer generischen Liste im Hashtable-Literal wirft in PS 5.1
+  # „Die Argumenttypen stimmen nicht überein“.
+  return @{ thema = $thema; zuege = $zuege.ToArray() }
+}
+# Anhängen unter einem benannten Mutex: die Tür des Workers schreibt Benes Züge in dieselbe Datei.
+# Ohne Sperre könnten beide dieselbe Zugnummer vergeben. Der Name ist mit john-worker.ps1 abgestimmt.
+function RaumAnhaengen([string]$id, [string]$wer, [string]$text) {
+  $m = New-Object Threading.Mutex($false, "Local\john-raum-$id")
+  $hat = $false
+  try {
+    try { $hat = $m.WaitOne(5000) } catch [Threading.AbandonedMutexException] { $hat = $true }
+    $r = RaumLesen $id
+    $max = 0; foreach ($z in $r.zuege) { if ([int]$z.zug -gt $max) { $max = [int]$z.zug } }
+    $n = $max + 1
+    $zeile = (@{ zug = $n; wer = $wer; zeit = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz'); text = $text; weitergeben = $true } | ConvertTo-Json -Compress -Depth 3)
+    [IO.File]::AppendAllText((RaumDatei $id), $zeile + "`n", $Utf8NoBom)
+    return $n
+  } finally { if ($hat) { $m.ReleaseMutex() }; $m.Dispose() }
+}
+function LaufMerken([string]$id, $info) {
+  if (-not (Test-Path $script:LaufOrdner)) { New-Item -ItemType Directory -Force $script:LaufOrdner | Out-Null }
+  [IO.File]::WriteAllText((Join-Path $script:LaufOrdner "$id.lauf"), ($info | ConvertTo-Json -Compress), $Utf8NoBom)
+}
+function LaufLoeschen([string]$id) { Remove-Item (Join-Path $script:LaufOrdner "$id.lauf") -Force -ErrorAction SilentlyContinue }
+
+$script:RaumNamen = @{ john = 'John'; madeleine = 'Madeleine'; bene = 'Bene'; system = 'Hinweis' }
+function RaumAnweisung([string]$wer) {
+  $ich = $script:RaumNamen[$wer]; $du = if ($wer -eq 'john') { 'Madeleine' } else { 'John' }
+  $extra = if ($wer -eq 'madeleine') {
+    "`nTechnischer Rahmen: Du läufst über die Codex CLI, aber NICHT als Programmierwerkzeug. Es gibt keine Dateien zu lesen und nichts auszuführen; alles, was du weißt, steht in diesem Text. Willst du etwas festhalten, schreib als letzte Zeile NOTIZ: <ein Satz>."
+  } else { '' }
+  return @"
+--- Gesprächsraum im Flow Compass ---
+Anwesend sind Benedikt (Bene), John (sein Coach) und Madeleine (Finanzen, Steuern, Organisation). Du bist $ich.
+Unten steht der Verlauf dieses Raums. Antworte auf den letzten Beitrag: zwei bis sechs Sätze, Deutsch, Du-Form zu Bene.
+Stimmst du $du zu oder widersprichst ihm/ihr, sag es direkt und mit Beleg. Nichts erfinden: fehlt eine Zahl, sag es.
+Nur deine Antwort, ohne Namen davor. Nichts versenden, buchen oder kündigen — vorbereiten ja.$extra
+"@
+}
+function RaumVerlauf($r) {
+  $sb = New-Object Text.StringBuilder
+  if ($r.thema) { [void]$sb.AppendLine("Thema: $($r.thema)"); [void]$sb.AppendLine() }
+  $sichtbar = @($r.zuege | Where-Object { $_.weitergeben -ne $false -and $_.wer -ne 'system' })
+  if ($sichtbar.Count -gt 30) { $sichtbar = $sichtbar[($sichtbar.Count - 30)..($sichtbar.Count - 1)] }
+  foreach ($z in $sichtbar) {
+    $zeit = ''; try { $zeit = ([datetime]::Parse([string]$z.zeit)).ToString('dd.MM. HH:mm') } catch { }
+    [void]$sb.AppendLine("$($script:RaumNamen[[string]$z.wer]) ($zeit):"); [void]$sb.AppendLine([string]$z.text); [void]$sb.AppendLine()
+  }
+  return $sb.ToString()
+}
+# Madeleines NOTIZ-Zeile: aus dem Raum heraus, in ihre Notizen hinein (wie der Server es macht).
+function NotizAbtrennen([string]$text) {
+  $zeilen = @($text.TrimEnd() -split "`r?`n")
+  if ($zeilen.Count -gt 1 -and $zeilen[-1] -match '^\s*NOTIZ:\s*(.+)$') {
+    $satz = $Matches[1].Trim()
+    try { [IO.File]::AppendAllText((Join-Path $script:MadeleineDir 'notizen\beratung.md'), "`n- $(Get-Date -Format 'dd.MM.yyyy HH:mm') (Gesprächsraum): $satz", $Utf8NoBom) } catch { }
+    return (($zeilen[0..($zeilen.Count - 2)]) -join "`n").TrimEnd()
+  }
+  return $text.Trim()
+}
+
+function RaumLauf {
+  if (-not $Raum -or $Raum -notmatch '^[a-z0-9-]{1,40}$') { throw 'Raum-Kennung fehlt oder ist ungültig' }
+  if (-not (Test-Path (RaumDatei $Raum))) { throw "Raum $Raum gibt es nicht" }
+  $sprecher = if ($An -eq 'beide') { @('john', 'madeleine') } else { @($An) }
+  foreach ($wer in $sprecher) {
+    $r = RaumLesen $Raum
+    $zug = 1; foreach ($z in $r.zuege) { if ([int]$z.zug -ge $zug) { $zug = [int]$z.zug + 1 } }
+    # Signal an die Rezeption: wer denkt, in welchem Raum, welcher Zug. Kein Text.
+    $jobId = $null
+    if ($HubToken) {
+      $a = HubRuf 'auftrag' @{ art = 'raum'; raum = $Raum; zug = $zug; an = $wer; thema = $r.thema; wer = $Geraet }
+      if ($a -and $a.ok) {
+        $jobId = [string]$a.id
+        $nm = HubRuf 'nimm' @{ id = $jobId; geraet = $Geraet }
+        if (-not $nm -or -not $nm.ok) { Log "Raum $Raum : Zug $zug nicht beansprucht (gestoppt oder vergeben)."; return @{ ok = $false } }
+      }
+    }
+    LaufMerken $Raum @{ jobId = $jobId; an = $wer; pid = $PID; seit = (Get-Date).ToString('o') }
+    try {
+      $verlauf = RaumVerlauf $r
+      if ($wer -eq 'john') {
+        $sys = (Lies (Join-Path $JohnDir 'CLAUDE.md') 14000) + "`n`n--- Deine Lage ---`n" + (LageText)
+        $antwort = Rufe-Claude $sys ((RaumAnweisung 'john') + "`n`n" + $verlauf)
+      } else {
+        $antwort = Rufe-Codex ((MadeleineSystem) + "`n`n" + (RaumAnweisung 'madeleine') + "`n`n" + $verlauf) $TimeoutSek
+        $antwort = NotizAbtrennen $antwort
+      }
+      if (-not $antwort.Trim()) { throw 'leere Antwort' }
+      $n = RaumAnhaengen $Raum $wer $antwort
+      if ($jobId) { HubRuf 'ergebnis' @{ id = $jobId; ok = $true; notiz = "Zug $n liegt am Gerät ($($antwort.Length) Zeichen)" } | Out-Null }
+      Log "Raum $Raum : $($script:RaumNamen[$wer]) hat Zug $n geschrieben ($($antwort.Length) Zeichen)."
+    } catch {
+      $msg = $_.Exception.Message
+      RaumAnhaengen $Raum 'system' ("$($script:RaumNamen[$wer]) konnte nicht antworten: $msg") | Out-Null
+      if ($jobId) { HubRuf 'ergebnis' @{ id = $jobId; ok = $false; notiz = 'gescheitert' } | Out-Null }
+      Log "Raum $Raum : $($script:RaumNamen[$wer]) gescheitert: $msg"
+      return @{ ok = $false }
+    } finally { LaufLoeschen $Raum }
+  }
+  return @{ ok = $true }
+}
+
 # ── Los ──────────────────────────────────────────────────────────────────────────────────
 try {
   switch ($Art) {
@@ -405,6 +457,7 @@ try {
     'hub'    { $r = HubLauf }
     'stapel' { $r = TaktLauf }
     'spiegel' { $r = SpiegelLauf }
+    'raum'    { $r = RaumLauf }
     'frage'  {
       if (-not $Text) { throw '-Text fehlt' }
       $sys = (Lies (Join-Path $JohnDir 'CLAUDE.md') 14000) + "`n`nAntworte als John in zwei bis sechs Sätzen, ohne JSON."
@@ -416,7 +469,7 @@ try {
   if ($r -and -not $r.ok) { exit 1 }
   exit 0
 } catch {
-  Log "Abbruch: $($_.Exception.Message)"
+  Log "Abbruch: $($_.Exception.Message) (Zeile $($_.InvocationInfo.ScriptLineNumber) in $([IO.Path]::GetFileName($_.InvocationInfo.ScriptName)))"
   if ($HubToken) { HubRuf 'log' @{ art = 'fehler'; geraet = $Geraet; text = "Auftrag $Art : $($_.Exception.Message)" } | Out-Null }
   exit 1
 }
