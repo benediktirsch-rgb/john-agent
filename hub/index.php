@@ -42,10 +42,10 @@ $eingerichtet = is_file(__DIR__ . '/token.php');
   </div>
 
   <div class="karte">
-    <h2>Für Menschen gibt es hier nichts zu sehen</h2>
-    <p>Johns Stand liegt hinter <code>api.php</code> und einem Token. Das ist keine Bescheidenheit,
-       sondern Absicht: eine Webseite, die Persönliches zeigt, ist eine Webseite, die Persönliches
-       verliert.</p>
+    <h2>Die Hotel-Lobby öffnen</h2>
+    <p>Triff John und Madeleine in Deinem geschützten Gesprächsraum.</p>
+    <p style="margin-top:1rem"><a href="https://bene.vaikuntha.eu/#hotel-lobby">🌿 Über Deinen Vereins-Compass</a></p>
+    <p style="margin-top:.5rem"><a href="https://bene.vishnuartists.com/compass/#hotel-lobby">🧭 Über Deinen persönlichen Compass</a></p>
   </div>
 
   <div class="karte">

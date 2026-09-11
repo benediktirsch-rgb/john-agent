@@ -73,3 +73,8 @@ nächste Session sieht, wo sie steht.
 - Das Logbuch der Rezeption hat anfangs Fragetexte mitgeschrieben (`auftrag: <text>`, `fertig: <text>`).
   Seit 11.09. 00:50 nur noch Art und Länge — bei `coach` stünde dort sonst die Frage eines Mitglieds.
   Die zwei alten Zeilen im Live-Log stammen aus meinem eigenen Prüfauftrag und rollen mit der Zeit heraus.
+
+
+## Hotel-Lobby — direkte Einstiege (11.09.2026)
+
+`#hotel-lobby` öffnet den Gesprächsraum direkt. Der Knopf „Hotel-Lobby öffnen“ sitzt in Johns Karte und in der ansichtsübergreifenden Rhythmusleiste. Vereins-Compass, Benes persönliches Portal und Hotel-Seite verlinken die Lobby. Keine neue Backend-Schnittstelle, keine öffentliche Gesprächsausgabe.
