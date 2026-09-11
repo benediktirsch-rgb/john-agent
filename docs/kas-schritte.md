@@ -16,12 +16,12 @@ Teil bereits vollständig.
   (`JOHN_HUB_URL`). `naturnah-lernen.de/john/` bleibt als zweite Adresse derselben Dateien bestehen.
 
 Rücknahme der Weiterleitung: `/.htaccess` im Webspace-Wurzelverzeichnis löschen — mehr steht nicht drin.
-## Schritt 2 — Raumschiff auf eine Subdomain (entschieden 11.09.2026, offen: KAS)
+## (erledigt) Schritt 2 — Raumschiff auf eine Subdomain
 
-Bene hat entschieden: John bekommt hotel-vaikuntha.de, das Finanz-Raumschiff eine Subdomain. Offen und nur
-mit KAS-Zugang: **`raumschiff.vishnuartists.com` anlegen, mit Let's Encrypt** (Muster wie bene./va.). Danach
-genügt dort eine `.htaccess` mit `RewriteRule ^ https://vishnuartists.com/raumschiff/ [R=302,L]` — das
-Raumschiff selbst bleibt, wo die Anmeldung ist.
+Bene hat `raumschiff.vishnuartists.com` am 11.09.2026 im KAS angelegt (Let's Encrypt bis 10.12.2026). Die
+`.htaccess` im Verzeichnis `/raumschiff.vishnuartists.com/` leitet samt Pfad und Parametern auf
+`vishnuartists.com/raumschiff/` weiter (Handkopie `vishnuartists-website-redesign/tools/htaccess-raumschiff.vishnuartists.com.txt`).
+Das Raumschiff selbst bleibt dort, wo die Anmeldung ist.
 ## Schritt 3 — nichts vergessen, was das Verzeichnis leeren könnte
 
 Der GitHub-Workflow `deploy.yml` (Job *naturnah-lernen.de*) spiegelt das Repo-Wurzelverzeichnis
