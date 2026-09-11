@@ -4,52 +4,24 @@ Ich habe keinen Zugriff auf Adminoberflächen — FTP und SSH ja, KAS-Verwaltung
 dieser Seite kann nur Bene machen. Es ist wenig, und die Rezeption läuft auch ohne den zweiten
 Teil bereits vollständig.
 
-## Stand 11.09.2026
+## Stand 11.09.2026, 10:15 — erledigt
 
-Die Rezeption liegt im **Wurzelverzeichnis** des Webspace (w01e7219) unter `/john/` und ist
-erreichbar unter **beiden** Adressen, weil beide Domains auf dieses Verzeichnis zeigen:
+- **Zertifikat:** Bene hat hotel-vaikuntha.de ein Let's-Encrypt-Zertifikat gegeben (gültig bis 05.12.2026).
+- **Dokumentenverzeichnis:** bleibt das Wurzelverzeichnis — **bitte nicht mehr umstellen.** Johns Zimmer
+  liegt dort unter `/john/`; ein eigenes Verzeichnis für die Domain wäre leer, und John wäre weg.
+- **Wurzel-.htaccess** (seit 11.09.2026, Handkopie `vishnuartists-website-redesign/tools/htaccess-root-hotel-vaikuntha.txt`):
+  auf dem Host hotel-vaikuntha.de geht jede Adresse außerhalb von `/john/` nach `/john/`. Gegengeprüft:
+  naturnah-lernen.de, vishnuartists.com, bene., demo., vaikuntha.eu, vishnu-artists.de antworten wie vorher.
+- **Worker, Compass-Build, Skripte** sprechen John unter `https://hotel-vaikuntha.de/john` an
+  (`JOHN_HUB_URL`). `naturnah-lernen.de/john/` bleibt als zweite Adresse derselben Dateien bestehen.
 
-| Adresse | Zustand | wofür |
-|---|---|---|
-| `https://naturnah-lernen.de/john/api.php` | **läuft, mit Zertifikat** | das, was Worker und Compass gerade benutzen |
-| `http://hotel-vaikuntha.de/john/api.php` | läuft, **ohne** Zertifikat | Johns eigentliche Adresse, sobald sie TLS hat |
+Rücknahme der Weiterleitung: `/.htaccess` im Webspace-Wurzelverzeichnis löschen — mehr steht nicht drin.
+## Schritt 2 — Raumschiff auf eine Subdomain (entschieden 11.09.2026, offen: KAS)
 
-Geprüft am 11.09.2026: beide antworten mit `200`, ohne Token `403`, `daten/stand.json` und
-`token.php` sind von außen `403`.
-
-## Schritt 1 — hotel-vaikuntha.de ein Zertifikat geben (10 Minuten, Bene)
-
-Im KAS (`w01e7219`):
-
-1. **Domain → hotel-vaikuntha.de → Bearbeiten**
-2. **Dokumentenverzeichnis** auf einen eigenen Ordner stellen: `/hotel-vaikuntha.de/`
-   (bisher: Wurzelverzeichnis — deshalb liegt dort auch naturnah-lernen.de)
-3. **SSL-Schutz → Let's-Encrypt-Zertifikat** ausstellen, für Domain **und** `www.`
-4. Wenn beides steht, sag mir Bescheid — dann läuft einmal
-
-   ```bash
-   powershell -NoProfile -ExecutionPolicy Bypass -File C:\dev\john-agent\hub\hub-deploy.ps1 -Ziel '/hotel-vaikuntha.de' -Adresse 'https://hotel-vaikuntha.de'
-   ```
-
-   Das lädt dieselben Dateien in das neue Verzeichnis, prüft die Adresse wirklich ab und setzt
-   `JOHN_HUB_URL` um. Der alte Ordner `/john/` bleibt vorerst liegen (zwei Adressen, ein
-   Verhalten) und wird gelöscht, wenn eine Woche lang nichts mehr darauf zugreift.
-
-**Was dagegen spricht, es jetzt zu tun:** nichts — außer dass es ohne diesen Schritt genauso
-funktioniert. Der Gewinn ist die schöne Adresse und `https` für hotel-vaikuntha.de.
-
-## Schritt 2 — die alte Absicht der Domain (Entscheidung nötig)
-
-hotel-vaikuntha.de war seit dem 04.09.2026 als Adresse für das **Finanz-Raumschiff** vorgesehen
-(`vishnuartists.com/raumschiff/`); die Weiterleitung wurde nie eingerichtet, die Wurzel-`.htaccess`
-mit dem 302 liegt als Vorlage in `vishnuartists-website-redesign/tools/htaccess-root-hotel-vaikuntha.txt`
-und **ist nicht aktiv**. Am 10.09.2026 hat Bene die Domain John gegeben.
-
-Beides zugleich geht nicht: entweder leitet die Domain aufs Raumschiff weiter, oder sie ist Johns
-Adresse. Mein Vorschlag, falls das Raumschiff eine schöne Adresse braucht: eine zweite Subdomain
-(`raumschiff.vishnuartists.com`) — das passt zum Subdomain-Muster vom 03.09.2026 und lässt John
-seine Adresse. Solange nichts entschieden ist, bleibt die Vorlage liegen, wo sie liegt.
-
+Bene hat entschieden: John bekommt hotel-vaikuntha.de, das Finanz-Raumschiff eine Subdomain. Offen und nur
+mit KAS-Zugang: **`raumschiff.vishnuartists.com` anlegen, mit Let's Encrypt** (Muster wie bene./va.). Danach
+genügt dort eine `.htaccess` mit `RewriteRule ^ https://vishnuartists.com/raumschiff/ [R=302,L]` — das
+Raumschiff selbst bleibt, wo die Anmeldung ist.
 ## Schritt 3 — nichts vergessen, was das Verzeichnis leeren könnte
 
 Der GitHub-Workflow `deploy.yml` (Job *naturnah-lernen.de*) spiegelt das Repo-Wurzelverzeichnis

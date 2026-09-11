@@ -83,8 +83,8 @@ function jh_id(string $p = ''): string { return $p . bin2hex(random_bytes(6)); }
  *  nachsehen, einen Punkt abraeumen, einen Auftrag stellen. Er kann Johns Stapel nicht
  *  ueberschreiben, keinen Auftrag beanspruchen und kein Ergebnis faelschen. */
 const JH_DARF = [
-    'geraet'  => ['stand','puls','stapel','punkt','auftrag','auftraege','nimm','ergebnis','log'],
-    'browser' => ['stand','punkt','auftrag'],
+    'geraet'  => ['stand','puls','stapel','punkt','auftrag','auftraege','nimm','ergebnis','log','spiegel','stapelstand'],
+    'browser' => ['stand','punkt','auftrag','stapelstand'],
 ];
 
 /**
@@ -226,6 +226,57 @@ function jh_eingang_uebernehmen(array $s): array {
     if ($neu) { $s = jh_logzeile($s, 'auftrag', "$neu Buchung(en) fuer Bene digital aus dem Briefkasten"); }
     return $s;
 }
+/* ---------- Johns Kachel ueberall (w=spiegel, w=stapelstand) --------------------------
+   Der Compass-Stapel des Cockpit-Servers, gespiegelt vom Geraet. Mail-Entwuerfe und
+   Claude-Auftraege bleiben auf dem Rechner (nurAmRechner) — hier steht das Thema, nicht
+   der Inhalt (ADR 0002). */
+function jh_compass(array $s): array {
+    $c = is_array($s['compass'] ?? null) ? $s['compass'] : [];
+    $c['punkte'] = array_values(array_filter((array)($c['punkte'] ?? []), 'is_array'));
+    $c['stand']  = (array)($c['stand'] ?? []);
+    return $c + ['stand_um' => null, 'quelle' => null];
+}
+function jh_punkt_saeubern(array $p): ?array {
+    $key = jh_text($p['key'] ?? '', 120);
+    $titel = jh_text($p['titel'] ?? '', 200);
+    if ($key === '' || $titel === '') return null;
+    $a = is_array($p['aktion'] ?? null) ? $p['aktion'] : [];
+    $art = jh_text($a['art'] ?? '', 20);
+    $aktion = ['art' => $art, 'label' => jh_text($a['label'] ?? '', 80)];
+    if (in_array($art, ['mail', 'claude'], true)) { $aktion['nurAmRechner'] = true; }
+    if ($art === 'link' && preg_match('~^https?://~', (string)($a['url'] ?? ''))) { $aktion['url'] = jh_text($a['url'], 400); }
+    if ($art === 'john') { $aktion['frage'] = jh_text($a['frage'] ?? '', 300); }
+    if ($art === 'termin') { $aktion['titel'] = jh_text($a['titel'] ?? '', 120); $aktion['start'] = jh_text($a['start'] ?? '', 30); $aktion['minuten'] = (int)($a['minuten'] ?? 30); }
+    if ($art === 'karte') { $aktion['ziel'] = jh_text($a['ziel'] ?? '', 20); $aktion['name'] = jh_text($a['name'] ?? '', 120); }
+    return ['key' => $key, 'titel' => $titel, 'satz' => jh_text($p['satz'] ?? '', 500), 'aktion' => $aktion];
+}
+function jh_stand_eintrag(array $e): ?array {
+    $status = jh_text($e['status'] ?? '', 10);
+    if (!in_array($status, ['ok', 'wieder', 'offen'], true)) return null;
+    $ts = jh_text($e['ts'] ?? '', 40);
+    if ($ts === '') return null;
+    return ['status' => $status, 'ts' => $ts, 'bis' => jh_text($e['bis'] ?? '', 40),
+            'aktion' => jh_text($e['aktion'] ?? '', 80), 'titel' => jh_text($e['titel'] ?? '', 200)];
+}
+/** Juengerer Zeitstempel gewinnt — so ueberschreibt kein Geraet ein OK, das es noch nicht kennt. */
+function jh_stand_mischen(array $alt, array $neu): array {
+    foreach ($neu as $key => $e) {
+        if (!is_array($e)) continue;
+        $e = jh_stand_eintrag($e);
+        $key = jh_text((string)$key, 120);
+        if (!$e || $key === '') continue;
+        if (!isset($alt[$key]) || jh_neuer($e['ts'], (string)($alt[$key]['ts'] ?? ''))) { $alt[$key] = $e; }
+    }
+    // Aufraeumen: was laenger als 30 Tage erledigt ist, traegt nichts mehr (wie Save-Stapel im Server).
+    foreach ($alt as $k => $e) { if ((jh_alter($e['ts'] ?? null) ?? 0) > 30 * 86400) unset($alt[$k]); }
+    return $alt;
+}
+function jh_compass_ts(array $c): ?string {
+    $j = null;
+    foreach ($c['stand'] as $e) { if (jh_neuer((string)($e['ts'] ?? ''), $j)) $j = (string)$e['ts']; }
+    return $j;
+}
+
 function jh_logzeile(array $s, string $art, string $text, ?string $geraet = null): array {
     $s['log'][] = ['zeit' => jh_jetzt(), 'art' => $art, 'text' => jh_text($text, 300), 'geraet' => $geraet ? jh_text($geraet, 40) : null];
     return $s;
@@ -269,6 +320,7 @@ function jh_stand_antwort(array $s): array {
                    'stille_tage' => $taktAlter === null ? null : (int)floor($taktAlter / 86400)],
         'geraete' => $geraete,
         'stapel' => $s['stapel'],
+        'compass' => jh_compass($s),
         'auftraege' => ['offen' => $offen, 'laufend' => $laeuft, 'fertig24' => $fertig],
         'log' => array_slice($s['log'], -20),
     ];
@@ -316,7 +368,7 @@ case 'puls':
         }
         $offen = 0;
         foreach ($s['auftraege'] as $a) { if ((string)($a['status'] ?? '') === 'offen') $offen++; }
-        return [$s, ['ok' => true, 'auftraege' => $offen, 'jetzt' => jh_jetzt()]];
+        return [$s, ['ok' => true, 'auftraege' => $offen, 'jetzt' => jh_jetzt(), 'compassTs' => jh_compass_ts(jh_compass($s))]];
     }));
 
 case 'stapel':
@@ -454,6 +506,35 @@ case 'log':
         return [$s, ['ok' => true]];
     }));
 
+case 'spiegel':
+    if (!$post) jh_fehler('nur POST', 400);
+    jh_ende(jh_schreiben(function (array $s) use ($koerper) {
+        $c = jh_compass($s);
+        if (isset($koerper['punkte']) && is_array($koerper['punkte'])) {
+            $punkte = [];
+            foreach (array_slice($koerper['punkte'], 0, 8) as $p) { if (is_array($p) && ($q = jh_punkt_saeubern($p))) $punkte[] = $q; }
+            $c['punkte'] = $punkte;
+            $c['stand_um'] = jh_text($koerper['stand_um'] ?? '', 40) ?: jh_jetzt();
+            $c['quelle'] = jh_text($koerper['quelle'] ?? '', 40);
+        }
+        $c['stand'] = jh_stand_mischen($c['stand'], (array)($koerper['stand'] ?? []));
+        $s['compass'] = $c;
+        return [$s, ['ok' => true, 'stand' => $c['stand'], 'compassTs' => jh_compass_ts($c), 'punkte' => count($c['punkte'])]];
+    }));
+
+case 'stapelstand':
+    if (!$post) jh_fehler('nur POST', 400);
+    $key = jh_text($koerper['key'] ?? '', 120);
+    $e = jh_stand_eintrag($koerper);
+    if ($key === '' || !$e) jh_fehler('key, status (ok|wieder|offen) und ts noetig', 400);
+    jh_ende(jh_schreiben(function (array $s) use ($key, $e, $jh_klasse) {
+        $c = jh_compass($s);
+        $c['stand'] = jh_stand_mischen($c['stand'], [$key => $e]);
+        $s['compass'] = $c;
+        $s = jh_logzeile($s, 'stapel', $e['status'] . ' (' . $jh_klasse . ')');
+        return [$s, ['ok' => true, 'eintrag' => $c['stand'][$key] ?? null]];
+    }));
+
 default:
-    jh_fehler('unbekannt: w=' . jh_text($was, 40) . ' (stand, puls, stapel, punkt, auftrag, auftraege, nimm, ergebnis, log)', 400);
+    jh_fehler('unbekannt: w=' . jh_text($was, 40) . ' (stand, puls, stapel, punkt, auftrag, auftraege, nimm, ergebnis, log, spiegel, stapelstand)', 400);
 }

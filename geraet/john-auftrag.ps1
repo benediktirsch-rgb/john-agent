@@ -11,6 +11,8 @@
     hub     einen Auftrag von der Rezeption holen, ausführen, Ergebnis zurückmelden
     frage   eine einzelne Frage beantworten (-Text), Antwort in die Rezeption
     stapel  Johns Stapel neu sortieren (nur mit Rezeption sinnvoll, siehe unten)
+    spiegel Johns Compass-Stapel in die Rezeption spiegeln und OKs von anderen Geraeten an den
+            Cockpit-Server nachreichen (kein Claude, dauert Sekunden)
 
   Warum hier NICHT john-stapel.json geschrieben wird
     Diese Datei gehört dem Cockpit-Server: er hält sie in `$script:Stapel` im Speicher und
@@ -26,7 +28,7 @@
     soll. Diese Doppelung ist bewusst und ist als Schuld notiert (docs\adr\0003).
 #>
 param(
-  [ValidateSet('takt','hub','frage','stapel')][string]$Art = 'takt',
+  [ValidateSet('takt','hub','frage','stapel','spiegel')][string]$Art = 'takt',
   [string]$Text = '',
   [string]$Geraet = '',
   [string]$Modell = 'claude-opus-5',
@@ -49,7 +51,7 @@ function LiesEnv([string]$n, $std) {
   return $std
 }
 if (-not $Geraet) { $Geraet = LiesEnv 'JOHN_GERAET' ($env:COMPUTERNAME.ToLower()) }
-$Hub      = ([string](LiesEnv 'JOHN_HUB_URL' 'https://naturnah-lernen.de/john')).TrimEnd('/')
+$Hub      = ([string](LiesEnv 'JOHN_HUB_URL' 'https://hotel-vaikuntha.de/john')).TrimEnd('/')
 $HubToken = LiesEnv 'JOHN_HUB_TOKEN' ''
 
 function Log([string]$m) {
@@ -240,7 +242,10 @@ function TaktLauf {
   $hash = ''
   try {
     $sha = [Security.Cryptography.SHA256]::Create()
-    $hash = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($lage))) -replace '-','').Substring(0, 16)
+    # Ueber die Lage OHNE Uhrzeit hashen (11.09.2026): die Zeile „## Heute" traegt HH:mm — mit ihr
+    # war jede Lage neu, und die Bremse griff nie (07:00-09:00 fuenf Aufrufe fuer „nichts Neues").
+    $fuerHash = [regex]::Replace($lage, '(?m)^(## Heute\r?\n.*?\d{4})\s+\d{1,2}:\d{2}\s*$', '$1')
+    $hash = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($fuerHash))) -replace '-','').Substring(0, 16)
   } catch { }
   $alt = ''
   if (Test-Path $HashDatei) { try { $alt = ([IO.File]::ReadAllText($HashDatei, [Text.Encoding]::UTF8)).Trim() } catch { } }
@@ -340,12 +345,66 @@ function HubLauf {
   }
 }
 
+# ── Spiegel: Johns Kachel auf allen Geraeten (11.09.2026) ─────────────────────────────────
+# Die Kachel im Compass holt ihren Stapel vom Cockpit-Server. Am Handy gibt es den nicht —
+# dort war sie leer. Dieser Lauf schiebt den Stapel in die Rezeption und holt zurueck, was
+# auf anderen Geraeten abgeraeumt wurde. Die Datei john-stapel.json wird dabei NUR GELESEN
+# (ADR 0004): Rueckwege gehen ueber den Endpunkt des Servers, der seine Datei selbst schreibt.
+function IsoZeit([string]$s) {
+  if (-not $s) { return $null }
+  try { return (Get-Date $s).ToString('yyyy-MM-ddTHH:mm:sszzz') } catch { return $null }
+}
+function Neuer([string]$a, [string]$b) {
+  if (-not $b) { return $true }; if (-not $a) { return $false }
+  try { return ([DateTimeOffset]::Parse($a) -gt [DateTimeOffset]::Parse($b)) } catch { return $false }
+}
+function SpiegelLauf {
+  if (-not $HubToken) { Log 'Keine Rezeption angebunden.'; return @{ ok = $false } }
+  $datei = Join-Path $Compass 'john-stapel.json'
+  $punkte = @(); $stand = @{}; $um = $null
+  if (Test-Path $datei) {
+    $d = [IO.File]::ReadAllText($datei, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    if ($d.letzte -and $d.letzte.punkte) { $punkte = @($d.letzte.punkte) }
+    foreach ($e in @($d.stand.PSObject.Properties)) {
+      if (-not $e) { continue }
+      $stand[$e.Name] = @{ status = [string]$e.Value.status; ts = (IsoZeit ([string]$e.Value.ts)); bis = [string]$e.Value.bis
+                           aktion = [string]$e.Value.aktion; titel = [string]$e.Value.titel }
+    }
+    # Sortierzeit = letzte.stand (wann John den Stapel sortiert hat). NICHT geschrieben: das
+    # aendert sich bei jedem OK, und dann hielte die Kachel sich faelschlich fuer frisch sortiert.
+    $um = IsoZeit ([string]$d.letzte.stand); if (-not $um) { $um = IsoZeit ([string]$d.geschrieben) }
+  }
+  $r = HubRuf 'spiegel' @{ punkte = $punkte; stand = $stand; stand_um = $um; quelle = $Geraet }
+  if (-not $r -or -not $r.ok) { Log 'Spiegel: Rezeption hat nicht angenommen.'; return @{ ok = $false } }
+
+  # Nachreichen: was die Rezeption juenger kennt als die Datei, geht an den Cockpit-Server.
+  # Nur bei ANDEREM Status — gleicher Status mit anderem Zeitstempel ist kein Auftrag, sonst
+  # schoben sich Server und Rezeption dieselbe Zeile ewig hin und her.
+  $nach = 0; $fehl = 0
+  foreach ($e in @($r.stand.PSObject.Properties)) {
+    if (-not $e) { continue }
+    $h = $e.Value; $f = $stand[$e.Name]
+    $fStatus = if ($f) { $f.status } else { 'offen' }
+    if ([string]$h.status -eq $fStatus) { continue }
+    if ($f -and -not (Neuer ([string]$h.ts) ([string]$f.ts))) { continue }
+    try {
+      $body = @{ key = $e.Name; status = [string]$h.status; aktion = [string]$h.aktion; titel = [string]$h.titel; stunden = 24; auftrag = '' } | ConvertTo-Json -Compress
+      $antwort = Invoke-RestMethod -Uri 'http://localhost:8787/api/john/stapel/stand' -Method Post -ContentType 'application/json; charset=utf-8' `
+                   -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 20
+      if ($antwort.ok) { $nach++ } else { $fehl++ }
+    } catch { $fehl++ }
+  }
+  if ($nach -or $fehl) { Log "Spiegel: $nach Stand-Eintrag/Eintraege an den Cockpit-Server nachgereicht$(if ($fehl) { ", $fehl gescheitert (Server belegt?)" })." }
+  return @{ ok = ($fehl -eq 0); punkte = $punkte.Count; nach = $nach }
+}
+
 # ── Los ──────────────────────────────────────────────────────────────────────────────────
 try {
   switch ($Art) {
     'takt'   { $r = TaktLauf }
     'hub'    { $r = HubLauf }
     'stapel' { $r = TaktLauf }
+    'spiegel' { $r = SpiegelLauf }
     'frage'  {
       if (-not $Text) { throw '-Text fehlt' }
       $sys = (Lies (Join-Path $JohnDir 'CLAUDE.md') 14000) + "`n`nAntworte als John in zwei bis sechs Sätzen, ohne JSON."

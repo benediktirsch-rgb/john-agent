@@ -3,13 +3,13 @@
 Diese Datei wird bei **jeder** Änderung nachgezogen. Sie ist die einzige Stelle, an der die
 nächste Session sieht, wo sie steht.
 
-## Läuft (Stand 11.09.2026, 00:30)
+## Läuft (Stand 11.09.2026, 10:20)
 
 | Teil | Zustand | geprüft womit |
 |---|---|---|
 | **Lobby** im Compass | in `dashboard.html`, in der eigenen Instanz gebaut | Browser: fünf Lagen richtig benannt, Fenster öffnet nach 2 Fehlschlägen (~6 s) |
 | **Worker** auf `vishnu-master` | Aufgabe „John Worker", Tür auf 8788 | `GET /stand` antwortet in ms, `POST /wecken` erkennt einen gesunden Server |
-| **Rezeption** im WWW | `https://naturnah-lernen.de/john/` und `http://hotel-vaikuntha.de/john/` | alle neun Endpunkte durchgespielt; ohne Token 403, `stand.json` und `token.php` 403 |
+| **Rezeption** im WWW | **`https://hotel-vaikuntha.de/john/`** (Zertifikat seit 11.09.; Domain-Wurzel leitet nach /john/), zweite Adresse `naturnah-lernen.de/john/` | alle neun Endpunkte durchgespielt; ohne Token 403, `stand.json` und `token.php` 403 |
 | **Puls** Gerät → Rezeption | jede Minute | Rezeption meldet `wach: true`, Gerät `vishnu-master` |
 | **Wiederanlauf** | Aufgabe „John Server" jetzt **jede Minute** (vorher 5) | `-Status` zeigt `PT1M` |
 | **Hub im Compass-Build** | `build-compass.ps1` setzt Adresse + Token in die eigene Instanz | im gebauten `index.html` nachgelesen |
@@ -17,25 +17,25 @@ nächste Session sieht, wo sie steht.
 | **Takt-Wächter** `takt.letzter` / `stille_tage` | in `w=stand`, in der Lobby sichtbar | Feld live abgefragt (noch `null`: erster Takt am Morgen) |
 | **Projekt John** auf vishnuartists.com | `f/projekt-john.php`, im Menü „Intern" jeder eingeloggten Seite | Prüfstand 25/25; Deploy über GitHub |
 | **Bene digital** (Buchung → Entwurf → Freigabe) | Briefkasten `daten/eingang.jsonl`, Auftrag `coach`, öffentliche Persona | echter Durchlauf 11.09. 00:42: Worker holte den Auftrag selbst, Claude 12 s, Entwurf in der Rezeption |
+| **Kachel auf allen Geräten** | Worker spiegelt den Compass-Stapel (`w=spiegel`), Kachel liest ihn aus dem Zimmer, wenn der Server fehlt; OK/⏰ gehen ins Zimmer (`w=stapelstand`) und zurück an den Server | Browser: Kachel aus dem Zimmer mit Hinweis; OK per Browser-Schlüssel kam beim Server an, zweiter Lauf reicht nichts doppelt nach |
+| **Takt auf der Kachel** | „🔔 Von selbst gesehen · Johns Takt HH:MM" mit „In den Stapel sortieren" / „Gesehen" | Browser, drei Funde des 09:30-Takts sichtbar |
+| **Erster Takttag** 11.09. | 06:30 und 09:30 mit Funden, dazwischen „nichts Neues" | Hash-Bremse war wirkungslos (Uhrzeit im Hash) — seit 10:15 behoben |
 | **Demo bleibt sauber** | Produkt-Build nimmt Lobby und Rezeption heraus | Wortprüfung bestanden, `compass-john-lobby.js` nicht im Demo-Ordner |
 
 ## Fehlt noch
 
-1. **Compass-Karte aus der Rezeption speisen.** Johns Kachel liest ihren Stapel weiter vom
-   Cockpit-Server. Solange das so ist, gibt es zwei Stände (ADR 0004). Nächster Schritt:
-   `johnKachel()` liest zuerst die Rezeption und schreibt jedes OK dorthin (`w=punkt`) — dann
-   stimmt „einmal abgeräumt, überall weg" wirklich.
-2. **hotel-vaikuntha.de mit eigenem Verzeichnis und Zertifikat** (`docs/kas-schritte.md`, Bene).
-3. **Zweites Gerät.** Das Protokoll trägt es; gebraucht wird nur `john-aufgaben.ps1 -Register` mit
-   gesetztem `JOHN_HUB_TOKEN` und `JOHN_GERAET`. Handy: liest über die Rezeption mit, denkt nicht.
-4. **Bene digital: Freigabe im Compass.** Heute gibt Bene Entwürfe auf `projekt-john.php` frei. Besser wäre
-   eine Rückfrage im Compass („Antwort an Sarah freigeben?"), dort entscheidet er ohnehin. Dazu: der erste
-   echte Login-Durchlauf der Seite (angemeldete Wege sind nur im Prüfstand gelaufen, nicht live).
-5. **`john-ki.ps1` herausziehen** (ADR 0003) — solange steht der Claude-Aufruf zweimal da.
-6. **Erster echter Takt steht noch aus.** Angelegt in der Nacht zum 11.09.; das Zeitfenster
-   (Mo–Fr 6:30–21:30) öffnet erst am Morgen. Der erste Lauf gehört gelesen: `john\coaching\takt.md`
-   und `geraet\john-auftrag.log`.
-
+1. **Takt-Funde in den Stapel statt daneben.** Heute stehen sie als eigener Block auf der Kachel; ein Klick
+   sortiert neu (ein Claude-Aufruf im Server, bis 90 s). Eleganter: der Server nimmt `letzter-takt.json` als
+   Kandidatenquelle und der Compass-Hash berücksichtigt den Takt — dann sortiert John von selbst ein. Braucht
+   einen Eingriff in `john-server.ps1` (Get-StapelKandidatenServer) an einem ruhigen Tag.
+2. **Raumschiff-Subdomain** `raumschiff.vishnuartists.com` (KAS, Bene) — danach eine Zeile `.htaccess`.
+3. **Bene digital: Freigabe im Compass** statt auf der Seite, und der erste echte Login-Durchlauf.
+4. **Zweites Gerät** — `john-aufgaben.ps1 -Register` mit `JOHN_HUB_TOKEN` und `JOHN_GERAET`.
+5. **`john-ki.ps1` herausziehen** (ADR 0003).
+6. **Takt-Quote messen** bis 18.09.: wie viele Takte gedacht, wie viele gehandelt. Unter einem Drittel → 60 min.
+7. **Zeitvergleich im Compass selbst:** `stapelStandMischen` in dashboard.html vergleicht Zeitstempel als
+   Text („…+02:00" gegen „…Z") — dabei gewinnt manchmal der ältere. Die Lobby umgeht es mit echtem
+   Zeitvergleich; im Compass selbst ist es eine Zeile für eine Session, die dashboard.html gerade hält.
 ## Kleine Wahrheiten, die man sonst zweimal lernt
 
 - Der Cockpit-Server meldet bei http.sys nur `http://localhost:8787/` an. Über `127.0.0.1` kommt

@@ -1,6 +1,6 @@
 # ADR 0005 — hotel-vaikuntha.de ist Johns Adresse
 
-**Datum:** 10.09.2026 · **Status:** angenommen, ein Punkt offen für Bene
+**Datum:** 10.09.2026 · **Status:** umgesetzt 11.09.2026 (Zertifikat + Wurzel-Weiterleitung; Raumschiff-Subdomain offen, KAS)
 
 ## Entscheidung
 
@@ -36,3 +36,10 @@ Wäre technisch der kürzeste Weg (das Muster steht, SSL inklusive). Dagegen spr
 ungenutzt herum, Bene hat sie ausdrücklich genannt, und John ist etwas Eigenes — er ist weder ein
 Vishnu-Werkzeug noch eine Vereinsseite. Ein Hotel als Bild für „hier wohnt jemand, der immer da
 ist" trägt außerdem die ganze Architektur: Zimmer, Rezeption, Lobby.
+
+## Nachtrag 11.09.2026
+
+Bene hat im Compass entschieden: John bekommt die Domain, das Raumschiff eine Subdomain. Er hat das
+Zertifikat ausgestellt; das Dokumentenverzeichnis blieb die Wurzel. Statt eines eigenen Verzeichnisses
+schickt eine Wurzel-.htaccess alles auf dieser Domain nach /john/ — ein Ort für Johns Dateien, keine
+zweite Kopie, kein zweiter Zustand. Seither ist `https://hotel-vaikuntha.de/john` die Adresse aller Geräte.

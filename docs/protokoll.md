@@ -10,7 +10,7 @@ Wahrheiten nebeneinander.
 https://hotel-vaikuntha.de/john/api.php?w=<was>
 ```
 
-Übergangsadresse, solange hotel-vaikuntha.de im KAS kein eigenes Dokumentenverzeichnis und kein
+Seit 11.09.2026 mit Zertifikat; die Wurzel-.htaccess schickt jede andere Adresse dieser Domain nach `/john/`. Früher: Übergangsadresse, solange hotel-vaikuntha.de im KAS kein eigenes Dokumentenverzeichnis und kein
 Zertifikat hat (siehe `kas-schritte.md`): `https://naturnah-lernen.de/john/api.php?w=<was>` — **dieselben
 Dateien, dasselbe Verzeichnis.** Der Worker nimmt `JOHN_HUB_URL`, fällt ohne Variable auf die
 Übergangsadresse zurück und schreibt das in seinen Stand, damit niemand rätselt.
@@ -24,7 +24,7 @@ gitignoriert, erzeugt von `hub-deploy.ps1`):
 | Schlüssel | Variable | liegt wo | darf |
 |---|---|---|---|
 | **Gerät** (`hash`) | `JOHN_HUB_TOKEN` | Benutzerumgebung jedes Geräts | alles |
-| **Browser** (`hash_browser`) | `JOHN_HUB_TOKEN_BROWSER` | eingesetzt im gebauten eigenen Compass | `stand`, `punkt`, `auftrag` |
+| **Browser** (`hash_browser`) | `JOHN_HUB_TOKEN_BROWSER` | eingesetzt im gebauten eigenen Compass | `stand`, `punkt`, `auftrag`, `stapelstand` |
 
 Warum zwei (Madeleines Einwand, `beratung/protokoll.md`): ein Schlüssel im Browser ist ein Schlüssel,
 der verloren gehen kann. Mit dem Browser-Schlüssel lässt sich Johns Stapel weder überschreiben noch
@@ -121,6 +121,30 @@ Rezeption sie weg.
 `{"art":"takt|start|fehler|hinweis","text":"…","geraet":"…"}`. Das Logbuch ist Johns Gedächtnis für
 Betrieb, nicht für Inhalte: 200 Zeilen, dann rollt es.
 
+### Johns Kachel überall: `compass` in `w=stand`, `POST w=spiegel`, `POST w=stapelstand` (seit 11.09.2026)
+
+Johns Kachel im Compass bekommt ihren Stapel vom Cockpit-Server (`/api/john/stapel`). Am Handy und auf
+jedem anderen Gerät ist dieser Server nicht erreichbar — die Kachel war dort leer. Deshalb spiegelt
+das Gerät den Stapel in die Rezeption, und jedes Gerät liest ihn dort, wenn es den Server nicht erreicht.
+
+- `w=stand` liefert zusätzlich `compass: { punkte, stand, stand_um, quelle }`. `punkte` sind Johns
+  Stapelpunkte in der Form des Compass (`key`, `titel`, `satz`, `aktion`), `stand` ist der Stand je
+  Punkt (`{key: {status: ok|wieder|offen, ts, bis, aktion, titel}}`).
+- `POST w=spiegel` (**nur Gerät**): `{punkte, stand, stand_um, quelle}`. Die Punkte werden ersetzt,
+  der Stand wird **gemischt: der jüngere `ts` gewinnt** (so kann ein Gerät kein OK vom Handy
+  überschreiben, das es noch nicht kennt). Antwort: der gemischte `stand`, damit das Gerät weiß,
+  was es an den Cockpit-Server nachreichen muss.
+- `POST w=stapelstand` (**Gerät und Browser**): `{key, status, ts, bis, aktion, titel}` — ein OK,
+  eine Wiedervorlage oder ein Zurück, egal von welchem Gerät. Wieder gilt: jüngerer `ts` gewinnt.
+- `POST w=puls` antwortet zusätzlich mit `compassTs` (jüngster `ts` im gespiegelten Stand). Liegt er
+  nach dem letzten Abgleich des Geräts, reicht es die neuen Einträge über den Endpunkt des
+  Cockpit-Servers (`POST /api/john/stapel/stand`) nach — nie über die Datei (ADR 0004).
+
+**Was nicht in die Rezeption gespiegelt wird:** der Mail-Entwurf einer Aktion (`an`, `betreff`,
+`text`) und jeder Claude-Auftrag. Solche Aktionen tragen im Spiegel `nurAmRechner: true`; die
+Kachel sagt am Handy „am Rechner", statt einen leeren Entwurf zu öffnen. Titel und Satz eines
+Punkts gehen mit (Satz auf 500 Zeichen gekürzt) — das ist die Grenze aus ADR 0002: das Thema ja,
+der Inhalt nein.
 ### Briefkasten `daten/eingang.jsonl` — Buchungen von der Vishnu-Seite (seit 11.09.2026)
 
 Die Seite „Projekt John" (`vishnuartists.com/projekt-john.php`) liegt **auf demselben Webspace** wie

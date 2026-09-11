@@ -79,7 +79,7 @@ if ($TokenErzeugen -or -not $browser) {
 $hashBrowser = Hash256 $browser
 
 if (-not $Adresse) {
-  $Adresse = if ($Ziel -eq '/john') { 'https://naturnah-lernen.de/john' } else { 'https://hotel-vaikuntha.de' }
+  $Adresse = if ($Ziel -eq '/john') { 'https://hotel-vaikuntha.de/john' } else { 'https://hotel-vaikuntha.de' }
 }
 $Adresse = $Adresse.TrimEnd('/')
 

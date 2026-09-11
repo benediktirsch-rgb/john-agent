@@ -48,7 +48,7 @@ param(
   [switch]$OhneHub
 )
 $ErrorActionPreference = 'Stop'
-$VERSION = '1.0.0'
+$VERSION = '1.1.0'   # 1.1: Spiegel fuer Johns Kachel auf allen Geraeten
 
 Add-Type -AssemblyName System.Net.Http -ErrorAction SilentlyContinue
 
@@ -69,7 +69,7 @@ function LiesEnv([string]$name, $std) {
   return $std
 }
 if (-not $Geraet) { $Geraet = LiesEnv 'JOHN_GERAET' ($env:COMPUTERNAME.ToLower()) }
-if (-not $Hub)    { $Hub    = LiesEnv 'JOHN_HUB_URL' 'https://naturnah-lernen.de/john' }
+if (-not $Hub)    { $Hub    = LiesEnv 'JOHN_HUB_URL' 'https://hotel-vaikuntha.de/john' }
 $HubToken = LiesEnv 'JOHN_HUB_TOKEN' ''
 $Hub = ([string]$Hub).TrimEnd('/')
 if (-not $HubToken) { $OhneHub = $true }
@@ -198,7 +198,7 @@ function Wecken([switch]$Erzwingen) {
 
 # ── Rezeption: Puls und Aufträge ─────────────────────────────────────────────────────────
 $script:HubTask = $null; $script:HubWas = ''
-$script:HubOffen = 0; $script:HubZeit = [datetime]::MinValue; $script:HubFehler = ''
+$script:HubOffen = 0; $script:HubZeit = [datetime]::MinValue; $script:HubFehler = ''; $script:HubCompassTs = ''
 function HubSenden([string]$was, $koerper) {
   if ($OhneHub) { return $null }
   try {
@@ -235,7 +235,7 @@ function HubAbholen {
     if (-not $res.IsSuccessStatusCode) { $script:HubFehler = "Rezeption HTTP $([int]$res.StatusCode)"; return }
     $script:HubFehler = ''; $script:HubZeit = Get-Date
     $d = $txt | ConvertFrom-Json
-    if ($script:HubWas -eq 'puls' -and $d.ok) { $script:HubOffen = [int]$d.auftraege }
+    if ($script:HubWas -eq 'puls' -and $d.ok) { $script:HubOffen = [int]$d.auftraege; $script:HubCompassTs = [string]$d.compassTs }
   } catch { $script:HubFehler = $_.Exception.Message }
 }
 
@@ -243,14 +243,18 @@ function HubAbholen {
 $script:Kinder = @()
 function KindStarten([string]$art, [string]$text) {
   if (-not (Test-Path $AuftragPs1)) { Log "john-auftrag.ps1 fehlt — kein Denken möglich ($AuftragPs1)" 'Red'; return $null }
-  if (@($script:Kinder).Count -ge 1) { return $null }   # höchstens einer denkt; John hat einen Kopf
+  # Höchstens einer denkt — John hat einen Kopf. Der Spiegel denkt nicht (kein Claude, Sekunden)
+  # und bekommt einen eigenen Platz, sonst wartete ein OK vom Handy auf einen 90-s-Gedanken.
+  $spiegelnd = @($script:Kinder | Where-Object { $_.art -eq 'spiegel' }).Count
+  $denkend   = @($script:Kinder | Where-Object { $_.art -ne 'spiegel' }).Count
+  if ($art -eq 'spiegel') { if ($spiegelnd) { return $null } } elseif ($denkend) { return $null }
   $argv = @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-WindowStyle','Hidden',
             '-File', $AuftragPs1, '-Art', $art, '-Geraet', $Geraet)
   if ($text) { $argv += @('-Text', $text) }
   try {
     $p = Start-Process -FilePath 'powershell.exe' -ArgumentList $argv -WindowStyle Hidden -PassThru
     $script:Kinder += @{ p = $p; art = $art; start = Get-Date }
-    Log "Auftrag $art gestartet (PID $($p.Id))" 'Cyan'
+    if ($art -ne 'spiegel') { Log "Auftrag $art gestartet (PID $($p.Id))" 'Cyan' }
     return $p
   } catch { Log "Auftrag $art liess sich nicht starten: $($_.Exception.Message)" 'Red'; return $null }
 }
@@ -262,7 +266,7 @@ function KinderPflegen {
     try { $lebt = -not $k.p.HasExited } catch { $lebt = $false }
     if (-not $lebt) {
       $dauer = [int]((Get-Date) - $k.start).TotalSeconds
-      Log "Auftrag $($k.art) fertig nach $dauer s (Code $(try { $k.p.ExitCode } catch { '?' }))"
+      if ($k.art -ne 'spiegel') { Log "Auftrag $($k.art) fertig nach $dauer s (Code $(try { $k.p.ExitCode } catch { '?' }))" }
       continue
     }
     if (((Get-Date) - $k.start).TotalMinutes -gt 12) {
@@ -274,7 +278,7 @@ function KinderPflegen {
   }
   $script:Kinder = $bleibt
 }
-function DenktGerade { return (@($script:Kinder).Count -gt 0) }
+function DenktGerade { return (@($script:Kinder | Where-Object { $_.art -ne 'spiegel' }).Count -gt 0) }
 
 # ── Takt: Johns eigener Rhythmus ─────────────────────────────────────────────────────────
 # Arbeitsfenster mit Absicht: Mo–Fr 6:30–21:30. Das Wochenende gehört Familie, Sport und
@@ -282,6 +286,12 @@ function DenktGerade { return (@($script:Kinder).Count -gt 0) }
 # Nachts denkt er auch nicht: es gibt niemanden, der die Antwort liest, und jeder Takt kostet
 # Kontingent im Abo, das Bene tagsüber selbst braucht.
 $script:LetzterTakt = [datetime]::MinValue
+# Nach einem Neustart nicht sofort denken: der letzte Takt steht in letzter-takt.json. Ohne das
+# lief nach jedem Wecken ein Claude-Aufruf, auch wenn der letzte zwei Minuten her war.
+try {
+  $lt = Join-Path $Hier 'letzter-takt.json'
+  if (Test-Path $lt) { $z = ([IO.File]::ReadAllText($lt, [Text.Encoding]::UTF8) | ConvertFrom-Json).zeit; if ($z) { $script:LetzterTakt = [datetime]::Parse([string]$z) } }
+} catch { }
 function TaktFenster([datetime]$t) {
   if ($t.DayOfWeek -eq 'Saturday' -or $t.DayOfWeek -eq 'Sunday') { return $false }
   $min = $t.Hour * 60 + $t.Minute
@@ -299,7 +309,7 @@ function TaktFaellig {
 # ── Stand: das, was die Lobby liest ──────────────────────────────────────────────────────
 function StandObjekt {
   $proz = @(ServerProzesse)
-  $kind = @($script:Kinder)[0]
+  $kind = @($script:Kinder | Where-Object { $_.art -ne 'spiegel' })[0]
   return @{
     ok = $true
     geraet = $Geraet; version = $VERSION
@@ -381,6 +391,7 @@ $aufgabe = $listener.GetContextAsync()
 $letztePflege = [datetime]::MinValue
 $letzterPuls  = [datetime]::MinValue
 $letzteProbe  = [datetime]::MinValue
+$script:SpiegelMt = -1; $script:SpiegelTs = '-'; $script:SpiegelZeit = [datetime]::MinValue
 
 try {
   while ($listener.IsListening -and -not $script:Ende) {
@@ -439,6 +450,17 @@ try {
     if (($jetzt - $letztePflege).TotalSeconds -ge 3) { KinderPflegen; $letztePflege = $jetzt }
     if (($jetzt - $letzteProbe).TotalSeconds -ge 20) { ProbeStarten; $letzteProbe = $jetzt; StandSchreiben }
     if (($jetzt - $letzterPuls).TotalSeconds -ge 60) { PulsSenden; $letzterPuls = $jetzt }
+
+    # ---- 2b. Spiegel: Johns Kachel auf allen Geraeten ----
+    # Ausloeser: der Server hat seinen Stapel geschrieben (Datei neuer), ein anderes Geraet hat
+    # etwas abgeraeumt (compassTs aus dem Puls neuer), oder zehn Minuten Ruhe als Sicherheitsnetz.
+    if (-not $OhneHub) {
+      $sd = Join-Path $Compass 'john-stapel.json'
+      $mt = if (Test-Path $sd) { (Get-Item $sd).LastWriteTimeUtc.Ticks } else { 0 }
+      if ($mt -ne $script:SpiegelMt -or $script:HubCompassTs -ne $script:SpiegelTs -or ($jetzt - $script:SpiegelZeit).TotalMinutes -ge 10) {
+        if (KindStarten 'spiegel' $null) { $script:SpiegelMt = $mt; $script:SpiegelTs = $script:HubCompassTs; $script:SpiegelZeit = $jetzt }
+      }
+    }
 
     # ---- 3. Johns eigener Rhythmus ----
     if (TaktFaellig) {
