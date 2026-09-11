@@ -33,7 +33,7 @@ ein Gerät stehenbleibt. Ohne Kopf oder mit falschem Schlüssel: **403**, nichts
 Endpunkt außerhalb der Reichweite: **403** „dieser Schlüssel darf kein …".
 
 **CORS:** kein `*`. Die Rezeption antwortet mit `Access-Control-Allow-Origin` nur den Ursprüngen,
-auf denen Johns Klienten laufen (`bene.vishnuartists.com`, `vishnuartists.com`, `vishnu-artists.de`,
+auf denen Johns Klienten laufen (`bene.vishnuartists.com`, `bene.vaikuntha.eu`, `vishnuartists.com`, `vishnu-artists.de`,
 `naturnah-lernen.de`, `hotel-vaikuntha.de`, `localhost`/`127.0.0.1` mit beliebigem Port). Das hält
 fremde Seiten im Browser draußen; gegen ein kopiertes Token hilft nur die Schlüsseltrennung oben.
 

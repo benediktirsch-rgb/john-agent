@@ -35,7 +35,7 @@ header('Content-Type: application/json; charset=utf-8');
    Tab. Erlaubt sind die Seiten, auf denen Johns Klienten wirklich laufen. Curl kuemmert das
    nicht — deshalb ist die zweite Haelfte der Antwort die Token-Trennung weiter unten. */
 $jh_erlaubt = [
-    'https://bene.vishnuartists.com', 'https://vishnuartists.com', 'https://www.vishnuartists.com',
+    'https://bene.vishnuartists.com', 'https://bene.vaikuntha.eu', 'https://vishnuartists.com', 'https://www.vishnuartists.com',
     'https://vishnu-artists.de', 'https://naturnah-lernen.de', 'https://hotel-vaikuntha.de',
 ];
 $jh_origin = $_SERVER['HTTP_ORIGIN'] ?? '';

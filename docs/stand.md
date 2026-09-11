@@ -44,12 +44,15 @@ nächste Session sieht, wo sie steht.
 8. **Gesprächsraum — was nach dem Einbau offen ist** (Oberfläche siehe „Läuft“; Astras Prüfliste gegen die
    Attrappe steht im Commit f59dbff). Beim Einbau geändert: die Instanz gilt schon als konfiguriert, wenn es
    `JOHN_API` gibt — lokal ist es `''` (same-origin), und der Knopf wäre am Rechner nie erschienen.
-   - **`https://bene.vaikuntha.eu`** als weitere Herkunft (Astras Notiz): DNS zeigt auf den KAS, ein gültiges
-     Zertifikat fehlt noch (11.09. 14:35), und das Subdomain-Layout sagt bisher `bene.vishnuartists.com`.
-     Freigeben erst nach Benes Ja: Tür über die User-Variable `JOHN_TUER_ORIGINS`, Rezeption in `hub/api.php`
-     (Allowlist). Keine globale Freigabe.
+   - **`https://bene.vaikuntha.eu`** ist von Bene ausdrücklich als weiterer Einbauort beauftragt.
+     Rezeption-Allowlist und Anmeldung (`vishnuartists-website-redesign/f/weiter.php`) bekommen
+     genau diese Adresse; keine pauschale Freigabe für andere Vaikuntha-Subdomains.
+     HTTPS-Prüfung am 11.09.: DNS erreichbar, Zertifikat passt noch nicht zum Hostnamen
+     (`RemoteCertificateNameMismatch`). KAS-Zertifikat und Zuordnung zum geschützten persönlichen
+     Portal stehen aus. Danach `JOHN_TUER_ORIGINS` um genau `https://bene.vaikuntha.eu` ergänzen,
+     Worker kontrolliert neu laden und Anmeldung sowie Raum auf der Zieladresse prüfen.
    - Am Handy und auf `bene.vishnuartists.com` noch nicht selbst gesehen (die Anmeldung ist Benes).
-   - Kleinigkeit: das Namensschild „Du · Platzhalter“ ist bei 14 px etwas zu breit für die Pille (114 px).
+   - Namensschild auf 140 px verbreitert, damit „Du · Platzhalter“ bei 14 px in die Pille passt.
 9. **Offene Entscheidung für Bene:** darf er am Handy in den Raum **schreiben**? Dann läge sein Satz einmal in der
    Rezeption. Bis dahin: am Handy Stand und Stopp.
 
