@@ -5,8 +5,9 @@
 (function () {
   'use strict';
   if (typeof window === 'undefined' || window.johnGespraechsraum) return;
-  const configured = window.JOHN_TUER || window.JOHN_HUB ||
-    (typeof JOHN_API === 'string' && JOHN_API);
+  // Die eigene Instanz definiert JOHN_API immer — lokal (localhost:8787) als leere Zeichenkette (same-origin),
+  // deshalb zählt schon, dass es sie gibt. Die Demo bindet dieses Skript gar nicht erst ein.
+  const configured = window.JOHN_TUER || window.JOHN_HUB || typeof JOHN_API === 'string';
   if (!configured) return; // In einer unkonfigurierten Demo weder UI noch Netzwerk.
   const door = (window.JOHN_TUER || 'http://127.0.0.1:8788').replace(/\/$/, '');
   const hub = (window.JOHN_HUB || '').replace(/\/$/, '');

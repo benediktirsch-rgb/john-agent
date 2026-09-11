@@ -3,7 +3,7 @@
 Diese Datei wird bei **jeder** Änderung nachgezogen. Sie ist die einzige Stelle, an der die
 nächste Session sieht, wo sie steht.
 
-## Läuft (Stand 11.09.2026, 12:10)
+## Läuft (Stand 11.09.2026, 14:45)
 
 | Teil | Zustand | geprüft womit |
 |---|---|---|
@@ -24,6 +24,7 @@ nächste Session sieht, wo sie steht.
 | **Gesprächsraum — Backend** (Worker 1.2.0) | Tür: `/raeume`, `/raum`, `/raum/weitergeben`, `/stopp`; Warteschlange vor dem Takt; Rezeption: Art `raum` ohne Text, Status `gestoppt`, `w=stopp`, `puls.stopp`; Madeleine denkt im Worker über `john-ki.ps1` (Codex) | Rezeption-Prüfstand 21/21 lokal, live deployt; Tür-Prüfstand 29/29 am laufenden Worker: echte Antworten von John, Stopp mitten in „beide" (auch mit lebendem `codex.exe` — nichts überlebt), Stopp vom Handy über die Rezeption binnen 10 s; Rezeption kennt Status, keinen Satz Inhalt |
 | **Tür nur für eigene Seiten** | `Allow-Origin: *` ist weg: fremde Herkunft 403, Handlungen nur per POST (405) | im Tür-Prüfstand (Abschnitt A) |
 | **Tür-Attrappe** für die Oberfläche | `tools/tuer-attrappe.php` — derselbe Vertrag mit gespielten Antworten | 10 Prüfungen gegen `php -S` |
+| **Gesprächsraum — Oberfläche** (von Astra, eingebaut 11.09. 14:40) | `compass/compass-gespraechsraum.js` → per `john-aufgaben.ps1 -Sync` nach flow-compass kopiert, `<script>` in `dashboard.html` nach der Lobby, Demo nimmt es heraus; Knopf „Gespräch mit John & Madeleine“ in Johns Karte | am **echten** Worker aus `localhost:8787`: Tür erreichbar, neuer Raum „Einbauprobe (Claude)“, John antwortet nach ~5 s, Status zurück auf „Bereit.“, Stopp gesperrt; Demo-Build: Wortprüfung bestanden, 0 Treffer |
 
 ## Fehlt noch
 
@@ -40,24 +41,15 @@ nächste Session sieht, wo sie steht.
 7. **Zeitvergleich im Compass selbst:** `stapelStandMischen` in dashboard.html vergleicht Zeitstempel als
    Text („…+02:00" gegen „…Z") — dabei gewinnt manchmal der ältere. Die Lobby umgeht es mit echtem
    Zeitvergleich; im Compass selbst ist es eine Zeile für eine Session, die dashboard.html gerade hält.
-8. **Gesprächsraum — Oberfläche:** `compass/compass-gespraechsraum.js` liegt zur Integration vor.
-   Animierte Orte: Bar im Hotel Vaikuntha, Berghütte, Goa, Anden, Roms Altstadt. Drei gezeichnete Figuren;
-   Benes Figur ist ausdrücklich Platzhalter, bis er ein Porträt wählt (nur Browser-Sitzung, kein Upload).
-   Der Ort bleibt als lokale Einstellung erhalten, Gesprächsentwürfe nur im Arbeitsspeicher.
-   Geprüft im Browser gegen die PHP-Tür-Attrappe: Nachricht an beide, Reihenfolge John → Madeleine,
-   Ortswechsel während des Laufs, Beitrag zurückhalten, Stoppen mit sichtbarer system-Zeile und gespielter
-   Fehler. Zusätzlich: simulierte Rezeption mit ausgeblendeter Eingabe und bestätigter
-   Stoppanforderung; 390-Pixel-Ansicht ohne horizontalen Überlauf. Syntax mit `node --check` geprüft. Live-Modelle und Produktion wurden nicht verändert.
-   **Einbau durch Claude:** `<script>` nach Konfiguration in `dashboard.html`, Ausschluss in
-   `build-compass-produkt.ps1`, Prüfung am echten Worker. Benes neuer Zielort ist ausdrücklich
-   **https://bene.vaikuntha.eu**; diese Herkunft zusätzlich an Tür und Rezeption freigeben und die eigene
-   Compass-Instanz dort integrieren. Keine globale CORS-Freigabe. Finale Erreichbarkeit und Integration offen.
-   Das Script hängt sich an `#stapelBody`; alternativ `window.johnGespraechsraum.oeffnen()`.
-   Konfiguration: `JOHN_TUER`, `JOHN_HUB`, `JOHN_HUB_TOKEN_BROWSER` (bestehender Build-Alias
-   `JOHN_HUB_TOKEN` wird ebenfalls gelesen; ausschließlich Browser-Schlüssel einsetzen).
-   Ohne konfigurierte Instanz wird kein Knopf angelegt und kein Netzwerk angefragt.
-   Ohne lokales Gerät: nur `w=stand` und `POST w=stopp`, keine Texte. Unbenannte Räume verwenden das
-   neutrale Thema „Gespräch“, damit die erste Textzeile nicht versehentlich zum Rezeptionsthema wird.
+8. **Gesprächsraum — was nach dem Einbau offen ist** (Oberfläche siehe „Läuft“; Astras Prüfliste gegen die
+   Attrappe steht im Commit f59dbff). Beim Einbau geändert: die Instanz gilt schon als konfiguriert, wenn es
+   `JOHN_API` gibt — lokal ist es `''` (same-origin), und der Knopf wäre am Rechner nie erschienen.
+   - **`https://bene.vaikuntha.eu`** als weitere Herkunft (Astras Notiz): DNS zeigt auf den KAS, ein gültiges
+     Zertifikat fehlt noch (11.09. 14:35), und das Subdomain-Layout sagt bisher `bene.vishnuartists.com`.
+     Freigeben erst nach Benes Ja: Tür über die User-Variable `JOHN_TUER_ORIGINS`, Rezeption in `hub/api.php`
+     (Allowlist). Keine globale Freigabe.
+   - Am Handy und auf `bene.vishnuartists.com` noch nicht selbst gesehen (die Anmeldung ist Benes).
+   - Kleinigkeit: das Namensschild „Du · Platzhalter“ ist bei 14 px etwas zu breit für die Pille (114 px).
 9. **Offene Entscheidung für Bene:** darf er am Handy in den Raum **schreiben**? Dann läge sein Satz einmal in der
    Rezeption. Bis dahin: am Handy Stand und Stopp.
 

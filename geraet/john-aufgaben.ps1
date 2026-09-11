@@ -44,8 +44,8 @@ $ServerTask  = 'John Server'
 $WachtTask   = 'John Server Wacht'
 $WorkerTask  = 'John Worker'
 $ServerSkript = Join-Path $Compass 'john-server-aufgabe.ps1'
-$LobbyQuelle = Join-Path $Repo 'compass\compass-john-lobby.js'
-$LobbyZiel   = Join-Path $Compass 'compass-john-lobby.js'
+# Dateien, die hier gepflegt und in den Compass kopiert werden (Lobby 10.09., Gesprächsraum 11.09. von Astra)
+$CompassDateien = @('compass-john-lobby.js', 'compass-gespraechsraum.js')
 
 function Da([string]$n) { return (Get-ScheduledTask -TaskName $n -ErrorAction SilentlyContinue) }
 function PortAntwortet([int]$p) {
@@ -59,14 +59,18 @@ function PortAntwortet([int]$p) {
 # Compass. Kopieren statt Verlinken: der Compass-Build liest den Ordner, und eine Verknüpfung
 # über zwei Repos hinweg wäre genau die Art Magie, die nach drei Monaten niemand mehr versteht.
 function LobbySync {
-  if (-not (Test-Path $LobbyQuelle)) { Write-Host "Lobby-Quelle fehlt: $LobbyQuelle" -ForegroundColor Red; return $false }
-  $neu = [IO.File]::ReadAllText($LobbyQuelle, [Text.Encoding]::UTF8).Replace("`r`n", "`n")
-  $alt = if (Test-Path $LobbyZiel) { [IO.File]::ReadAllText($LobbyZiel, [Text.Encoding]::UTF8) } else { '' }
-  if ($alt -eq $neu) { Write-Host "Lobby: unveraendert ($LobbyZiel)"; return $true }
-  [IO.File]::WriteAllText($LobbyZiel, $neu, (New-Object Text.UTF8Encoding($false)))
-  Write-Host "Lobby kopiert -> $LobbyZiel  ($($neu.Length) Zeichen)" -ForegroundColor Green
-  Write-Host "  Danach: build-compass.ps1 (oder die Aufgabe 'Vishnu Flow Compass publish' abwarten)."
-  return $true
+  $ok = $true; $kopiert = $false
+  foreach ($datei in $CompassDateien) {
+    $quelle = Join-Path $Repo "compass\$datei"; $ziel = Join-Path $Compass $datei
+    if (-not (Test-Path $quelle)) { Write-Host "Quelle fehlt: $quelle" -ForegroundColor Red; $ok = $false; continue }
+    $neu = [IO.File]::ReadAllText($quelle, [Text.Encoding]::UTF8).Replace("`r`n", "`n")
+    $alt = if (Test-Path $ziel) { [IO.File]::ReadAllText($ziel, [Text.Encoding]::UTF8) } else { '' }
+    if ($alt -eq $neu) { Write-Host "${datei}: unveraendert"; continue }
+    [IO.File]::WriteAllText($ziel, $neu, (New-Object Text.UTF8Encoding($false)))
+    Write-Host "$datei kopiert -> $ziel  ($($neu.Length) Zeichen)" -ForegroundColor Green; $kopiert = $true
+  }
+  if ($kopiert) { Write-Host "  Danach: build-compass.ps1 (oder die Aufgabe 'Vishnu Flow Compass publish' abwarten)." }
+  return $ok
 }
 
 if ($Sync) { LobbySync | Out-Null; return }
