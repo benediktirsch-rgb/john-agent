@@ -98,3 +98,10 @@ meinem Vishnu-Master raus“). Die Fragen, die Madeleine der Sache nach stellen 
 ein Schlüssel je Gerät, Kosten je Woche (bis 75 kurze Sessions), was passiert, wenn drei Monate niemand die
 Routine anschaut. Bene stellt sie ihr beim nächsten Lauf; die Antwort kommt hier ungefiltert darunter.
 
+## 12.09.2026 — Ein Schlüssel je Gerät (ADR 0007): Gegenprüfung steht aus
+
+Gleiche Lage wie beim ADR 0006, gleiche Session. Die Entscheidung folgt Madeleines eigenem Einwand Nr. 5
+vom 11.09. (Schlüsseltrennung), auf Geräte übertragen. Was sie prüfen sollte: ob der Übergang mit dem
+alten ungebundenen Schlüssel zu lange offen bleibt, und ob ein angezeigter Schlüssel im Terminal (für die
+Wolke) ein akzeptabler Weg ist oder ob er nur in die Zwischenablage gehört.
+

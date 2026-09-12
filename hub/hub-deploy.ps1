@@ -17,11 +17,15 @@
 
   Zugänge (User-Umgebungsvariablen)
     VA_FTP_HOST / VA_FTP_USER / VA_FTP_PASS   FTPS-Zugang zum KAS
-    JOHN_HUB_TOKEN                            Johns Token; -TokenErzeugen legt eines an
+    JOHN_HUB_TOKEN                            Johns alter, ungebundener Geraete-Schluessel; -TokenErzeugen legt einen an
+    JOHN_HUB_GERAETE                          Geraetenamen, Komma-getrennt (z. B. vishnu-master,wolke) — ein Schluessel je Geraet
+    JOHN_HUB_TOKEN_<NAME>                     der Schluessel des Geraets NAME (Grossbuchstaben, - wird _); fehlt er, wird er erzeugt
 
   Aufruf
     hub-deploy.ps1                 hochladen und danach wirklich abfragen
     hub-deploy.ps1 -TokenErzeugen  neues Token würfeln, als User-Variable setzen, hochladen
+    hub-deploy.ps1 -GeraetErzeugen wolke   Schluessel fuer EIN Geraet neu wuerfeln (die anderen bleiben)
+    hub-deploy.ps1 -NurGeraete     den alten ungebundenen Schluessel (hash) weglassen — wenn jedes Geraet seinen hat
     hub-deploy.ps1 -NurPruefen     nichts hochladen, nur die Live-Adresse abfragen
     hub-deploy.ps1 -Ziel '/hotel-vaikuntha.de'   eigenes Dokumentenverzeichnis (später)
 #>
@@ -29,6 +33,8 @@ param(
   [string]$Ziel = '/john',
   [string]$Adresse = '',
   [switch]$TokenErzeugen,
+  [string]$GeraetErzeugen = '',
+  [switch]$NurGeraete,
   [switch]$NurPruefen
 )
 $ErrorActionPreference = 'Stop'
@@ -77,6 +83,46 @@ if ($TokenErzeugen -or -not $browser) {
   Sag 'Browser-Schluessel erzeugt (JOHN_HUB_TOKEN_BROWSER). Compass danach neu bauen.' 'Green'
 }
 $hashBrowser = Hash256 $browser
+
+# ── Ein Schluessel je Geraet (12.09.2026, ADR 0007) ──────────────────────────────────────
+# Der Wolken-Schluessel liegt in einer Cloud-Umgebung; er muss widerrufbar sein, ohne dass
+# vishnu-master stehenbleibt. Deshalb je Geraet ein eigener Schluessel, gebunden an den Namen.
+# Der Schluessel des eigenen Rechners wird zusaetzlich als JOHN_HUB_TOKEN gesetzt, damit der
+# Worker ihn beim naechsten Start nimmt; fremde Geraete (wolke) bekommen ihn einmal angezeigt.
+function NeuerSchluessel {
+  $b = New-Object byte[] 32
+  [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
+  return ([BitConverter]::ToString($b) -replace '-','').ToLower()
+}
+function VarName([string]$geraet) { return 'JOHN_HUB_TOKEN_' + (($geraet.ToUpperInvariant()) -replace '[^A-Z0-9]','_') }
+$geraeteListe = @()
+$geraeteRoh = LiesEnv 'JOHN_HUB_GERAETE'
+if ($geraeteRoh) { $geraeteListe = @($geraeteRoh -split ',' | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ }) }
+if ($GeraetErzeugen -and ($geraeteListe -notcontains $GeraetErzeugen.ToLowerInvariant())) {
+  $geraeteListe += $GeraetErzeugen.ToLowerInvariant()
+  [Environment]::SetEnvironmentVariable('JOHN_HUB_GERAETE', ($geraeteListe -join ','), 'User')
+}
+$geraeteHashes = @{}
+foreach ($g in $geraeteListe) {
+  if ($g -notmatch '^[a-z0-9][a-z0-9.-]{0,39}$') { Sag "Geraetename ungueltig: $g (a-z, 0-9, Punkt, Bindestrich)" 'Red'; return }
+  $var = VarName $g
+  $t = LiesEnv $var
+  if (-not $t -or ($GeraetErzeugen -and $g -eq $GeraetErzeugen.ToLowerInvariant())) {
+    $t = NeuerSchluessel
+    [Environment]::SetEnvironmentVariable($var, $t, 'User')
+    Set-Item -Path ("Env:" + $var) -Value $t
+    if ($g -eq $env:COMPUTERNAME.ToLowerInvariant()) {
+      [Environment]::SetEnvironmentVariable('JOHN_HUB_TOKEN', $t, 'User'); $env:JOHN_HUB_TOKEN = $t; $token = $t
+      Sag "Schluessel fuer dieses Geraet ($g) erzeugt und als JOHN_HUB_TOKEN gesetzt — Worker neu starten." 'Green'
+    } else {
+      Sag "Schluessel fuer Geraet '$g' erzeugt ($var). In dessen Umgebung als JOHN_HUB_TOKEN eintragen:" 'Green'
+      Sag "  $t" 'Yellow'
+      Sag "  (wird nur jetzt angezeigt; spaeter: [Environment]::GetEnvironmentVariable('$var','User'))" 'DarkGray'
+    }
+  }
+  $geraeteHashes[$g] = Hash256 $t
+}
+if ($NurGeraete -and $geraeteHashes.Count -eq 0) { Sag '-NurGeraete ohne Geraete (JOHN_HUB_GERAETE) — dann kaeme niemand mehr hinein.' 'Red'; return }
 
 if (-not $Adresse) {
   $Adresse = if ($Ziel -eq '/john') { 'https://hotel-vaikuntha.de/john' } else { 'https://hotel-vaikuntha.de' }
@@ -155,8 +201,10 @@ $tokenPhp = @"
    SHA-256 des Tokens, nie das Token selbst. Nicht von Hand aendern - beim naechsten
    Deploy wird die Datei ueberschrieben. */
 return [
-    'hash'         => '$hash',          /* Geraete: alles */
-    'hash_browser' => '$hashBrowser',   /* Browser: stand, punkt, auftrag */
+$(if (-not $NurGeraete) { "    'hash'         => '$hash',          /* alter ungebundener Geraete-Schluessel (Uebergang) */`n" })    'hash_browser' => '$hashBrowser',   /* Browser: stand, punkt, auftrag */
+    'geraete'      => [                 /* ein Schluessel je Geraet, gebunden an den Namen (ADR 0007) */
+$(($geraeteHashes.Keys | Sort-Object | ForEach-Object { "        '$_' => '$($geraeteHashes[$_])'," }) -join "`n")
+    ],
 ];
 "@
 LadeText $tokenPhp "$Ziel/token.php"
