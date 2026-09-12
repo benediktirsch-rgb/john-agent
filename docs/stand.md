@@ -26,8 +26,17 @@ nächste Session sieht, wo sie steht.
 | **Tür-Attrappe** für die Oberfläche | `tools/tuer-attrappe.php` — derselbe Vertrag mit gespielten Antworten | 10 Prüfungen gegen `php -S` |
 | **Gesprächsraum — Oberfläche** (von Astra, eingebaut 11.09. 14:40) | `compass/compass-gespraechsraum.js` → per `john-aufgaben.ps1 -Sync` nach flow-compass kopiert, `<script>` in `dashboard.html` nach der Lobby, Demo nimmt es heraus; Knopf „Gespräch mit John & Madeleine“ in Johns Karte | am **echten** Worker aus `localhost:8787`: Tür erreichbar, neuer Raum „Einbauprobe (Claude)“, John antwortet nach ~5 s, Status zurück auf „Bereit.“, Stopp gesperrt; Demo-Build: Wortprüfung bestanden, 0 Treffer |
 
+| **Gerät „wolke“** (ADR 0006, 12.09.) | im Repo: `geraet-wolke/rezeption.sh` (Protokoll-Client in bash), `TAKT.md` (Ablauf der Routine), `umgebung.md` (was Bene einrichtet); Routine „John · wolke“ stündlich Mo–Fr | `bash -n`; Skript gegen die Live-Rezeption: ohne Token Exit 3 mit Grund, mit falschem Token 403 → **Umgebung noch ohne Token, erster Takt steht aus** |
+| **Rezeption gehärtet** (12.09.) | Bremse gegen Token-Raten (`daten/bremse.json`, 20 Fehlversuche je Herkunft in 10 min → 429, 0,3 s je Fehlversuch), Körper ≤ 256 KB (413), `nosniff`/`no-referrer`, HSTS nur auf hotel-vaikuntha.de; `.htaccess` sperrt auch `.jsonl/.txt/.ps1` | `php -l`; live nach `hub-deploy.ps1`: 21× falsches Token → 429 mit `Retry-After` |
+| **memanto für John** (12.09.) | `docs/memanto.md`: Agent `john`, was hinein darf und was nie; Takt der Wolke liest und schreibt es | Einrichtung auf dem Rechner offen (`memanto agent create john`, `connect claude-code`) |
+
 ## Fehlt noch
 
+0. **Wolke anschalten (Bene, 10 Minuten):** `JOHN_HUB_TOKEN`, `JOHN_GERAET=wolke`, `MOORCHEH_API_KEY` in der
+   Claude-Code-Umgebung setzen, Setup-Skript aus `geraet-wolke/umgebung.md` eintragen, privates Repo `john`
+   aus `C:\dev\john` anlegen und anhängen, Routine Gmail/Kalender geben. Dann `hub-deploy.ps1` für die
+   gehärtete Rezeption. **Danach: ein Schlüssel je Gerät** (`token.php` mit Liste statt zwei Hashes), damit
+   der Wolken-Schlüssel widerrufbar ist, ohne vishnu-master anzuhalten.
 1. **Takt-Funde in den Stapel statt daneben.** Heute stehen sie als eigener Block auf der Kachel; ein Klick
    sortiert neu (ein Claude-Aufruf im Server, bis 90 s). Eleganter: der Server nimmt `letzter-takt.json` als
    Kandidatenquelle und der Compass-Hash berücksichtigt den Takt — dann sortiert John von selbst ein. Braucht

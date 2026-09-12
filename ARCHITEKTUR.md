@@ -81,6 +81,14 @@ sein Stand ist von 22:41" — statt einer leeren Karte, die aussieht wie „nich
   Kindprozess** (`john-auftrag.ps1`). Der Worker wartet nicht, er schaut nach. Ein Auftrag, der hängt,
   kostet einen Auftrag — nicht John.
 
+### Schicht 2b — die Wolke (`geraet-wolke/`, seit 12.09.2026)
+
+Ein Gerät ohne Rechner: eine Routine in Claude Code (Web) startet stündlich eine Session, die als John
+denkt und dasselbe Protokoll spricht. Sie hat keine Tür und keine Räume, nimmt aber Aufträge und setzt den
+Stapel, wenn der Rechner schläft. Damit hängt John nicht mehr an vishnu-master (Ursache 3 oben). Warum das
+ADR 0001 nicht widerspricht: die Cloud hat inzwischen Mail, Kalender und Jira als Konnektoren —
+`docs/adr/0006-geraet-wolke.md`.
+
 ### Schicht 3 — Klienten
 
 Der Compass fragt in dieser Reihenfolge: **Gerät (8788) → Cockpit-Server (8787) → Rezeption (WWW)**.
@@ -115,6 +123,7 @@ verschwinden, sobald er antwortet.
 | Gerät: ein einzelner Auftrag | `geraet/john-auftrag.ps1` | **john-agent** |
 | Gerät: Aufgaben einrichten | `geraet/john-aufgaben.ps1` | **john-agent** |
 | Lobby im Compass | `compass/compass-john-lobby.js` → kopiert nach `flow-compass/` | **john-agent** (Quelle) |
+| Gerät „wolke“: Rezeptions-Client, Takt, Umgebung | `geraet-wolke/rezeption.sh`, `geraet-wolke/TAKT.md`, `geraet-wolke/umgebung.md` | **john-agent** (ADR 0006) |
 | Cockpit-Server, Quellen, Boards | `john-server.ps1`, `john-board.ps1` | flow-compass |
 | Johns Persona, Pipeline, Coaching | `CLAUDE.md`, `bewerbungen/`, `coaching/` | john |
 | Madeleines Persona und Wissen | `CLAUDE.md`, `wissen/` | madeleine (Ordner) |

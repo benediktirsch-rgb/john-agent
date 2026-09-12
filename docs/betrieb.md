@@ -42,6 +42,20 @@ Die Lobby im Compass sagt es inzwischen selbst; hier die Handarbeit dahinter.
    Server: `http://localhost:8787/__stop` — und danach **prüfen, ob der Prozess wirklich weg ist**;
    er bleibt manchmal stehen, spiegelt nach H: und blockiert die Aufgabe (IgnoreNew).
 
+## Gerät „wolke“ (seit 12.09.2026, ADR 0006)
+
+Läuft nicht auf einem Rechner: eine Routine in Claude Code (Web) startet stündlich Mo–Fr 06–20 Uhr eine
+Session, die `geraet-wolke/TAKT.md` abarbeitet. Sie spricht die Rezeption über `geraet-wolke/rezeption.sh`
+an, nimmt Aufträge, setzt den Stapel nur, wenn kein anderes Gerät in den letzten zwei Stunden getaktet hat.
+
+| Frage | Antwort |
+|---|---|
+| Lebt sie? | `w=stand` → `geraete[]` enthält `wolke` mit `takt`; `wach` ist nur während der Session wahr |
+| Stumm? | Routine in claude.ai/code → Routines ansehen: letzte Läufe, Fehler. Ohne `JOHN_HUB_TOKEN` endet jeder Lauf nach einer Zeile („nicht angebunden“) |
+| Anhalten | Routine deaktivieren; John läuft dann nur noch auf dem Rechner |
+| Neu starten | Routine „jetzt ausführen“ — ein Takt außer der Reihe |
+| Zeitumstellung | Cron ist UTC: Sommer `0 4-18 * * 1-5`, Winter `0 5-19 * * 1-5` |
+
 ## Johns Takt
 
 - Mo–Fr 6:30–21:30, standardmäßig alle 30 Minuten. Wochenende und Nacht sind bewusst frei.

@@ -8,7 +8,8 @@
 Options -Indexes
 
 # Der Zustand geht niemanden etwas an, der ihn nicht über api.php holt.
-<FilesMatch "\.(json|log|md)$">
+# 12.09.2026: auch .jsonl (Briefkasten), .txt und .ps1 — falls je etwas neben api.php landet.
+<FilesMatch "\.(json|jsonl|log|md|txt|ps1)$">
   Require all denied
 </FilesMatch>
 
