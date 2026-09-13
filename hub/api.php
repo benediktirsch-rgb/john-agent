@@ -146,7 +146,9 @@ function jh_bremse_zaehlen(string $salz): void {
     usleep(300000);                          // 0,3 s je Fehlversuch — Raten wird langsam, Betrieb nicht
 }
 
-function jh_pruefe_token(): string {
+/* Rueckgabe [klasse, geraet]: geraet ist der gebundene Name (token.php 'geraete', ADR 0007) oder
+   null fuer den alten ungebundenen Schluessel und den Browser. */
+function jh_pruefe_token(): array {
     $datei = __DIR__ . '/token.php';
     if (!is_file($datei)) { jh_fehler('Rezeption nicht eingerichtet (token.php fehlt)', 500); }
     $cfg = require $datei;
@@ -155,9 +157,13 @@ function jh_pruefe_token(): string {
     $ist = $_SERVER['HTTP_X_JOHN_TOKEN'] ?? '';
     if (is_string($ist) && $ist !== '') {
         $meins = hash('sha256', $ist);
+        foreach ((array)($cfg['geraete'] ?? []) as $name => $soll) {      // gebundene Schluessel zuerst
+            $name = jh_text($name, 40);
+            if ($name !== '' && is_string($soll) && $soll !== '' && hash_equals($soll, $meins)) { return ['geraet', $name]; }
+        }
         foreach (['geraet' => 'hash', 'browser' => 'hash_browser'] as $klasse => $feld) {
             $soll = (string)($cfg[$feld] ?? '');
-            if ($soll !== '' && hash_equals($soll, $meins)) { return $klasse; }
+            if ($soll !== '' && hash_equals($soll, $meins)) { return [$klasse, null]; }
         }
     }
     /* Erst der Vergleich, dann die Bremse: ein richtiger Schluessel kommt immer durch, auch wenn
@@ -166,7 +172,16 @@ function jh_pruefe_token(): string {
     jh_bremse_pruefen($salz);
     jh_bremse_zaehlen($salz);
     jh_fehler((is_string($ist) && $ist !== '') ? 'Token stimmt nicht' : 'kein Token', 403);
-    return '';
+    return ['', null];
+}
+
+/** Welcher Geraetename gilt fuer diese Anfrage? Ein gebundener Schluessel darf nur unter seinem
+ *  eigenen Namen auftreten; leer heisst „nimm meinen“. Ungebundene Schluessel nehmen, was kommt. */
+function jh_geraet_name(?string $gebunden, mixed $angegeben, int $max = 40): string {
+    $a = jh_text($angegeben ?? '', $max);
+    if ($gebunden === null) return $a;
+    if ($a !== '' && $a !== $gebunden) jh_fehler("dieser Schluessel gehoert zu $gebunden", 403);
+    return $gebunden;
 }
 
 /* ---------- Zustand ------------------------------------------------------------------ */
@@ -399,7 +414,7 @@ function jh_stand_antwort(array $s): array {
 }
 
 /* ---------- Eingang ------------------------------------------------------------------ */
-$jh_klasse = jh_pruefe_token();
+[$jh_klasse, $jh_geraet] = jh_pruefe_token();
 
 $was = (string)($_GET['w'] ?? '');
 if ($was !== '' && !in_array($was, JH_DARF[$jh_klasse] ?? [], true)) {
@@ -423,7 +438,7 @@ case 'stand':
 
 case 'puls':
     if (!$post) jh_fehler('nur POST', 400);
-    $name = jh_text($koerper['geraet'] ?? '', 40);
+    $name = jh_geraet_name($jh_geraet, $koerper['geraet'] ?? '');
     if ($name === '') jh_fehler('geraet fehlt', 400);
     jh_ende(jh_schreiben(function (array $s) use ($name, $koerper) {
         $vorher = $s['geraete'][$name] ?? null;
@@ -456,6 +471,7 @@ case 'stapel':
     if (!$post) jh_fehler('nur POST', 400);
     $stand = jh_text($koerper['stand'] ?? '', 40);
     if ($stand === '') jh_fehler('stand fehlt', 400);
+    $koerper['quelle'] = jh_geraet_name($jh_geraet, $koerper['quelle'] ?? '');
     jh_ende(jh_schreiben(function (array $s) use ($koerper, $stand) {
         // Ein spät zurückkehrendes Gerät darf keinen alten Stapel über einen neuen legen.
         if (!jh_neuer($stand, $s['stapel']['stand'] ?? null)) {
@@ -557,7 +573,7 @@ case 'auftraege':
 case 'nimm':
     if (!$post) jh_fehler('nur POST', 400);
     $id = jh_text($koerper['id'] ?? '', 40);
-    $geraet = jh_text($koerper['geraet'] ?? '', 40);
+    $geraet = jh_geraet_name($jh_geraet, $koerper['geraet'] ?? '');
     if ($id === '' || $geraet === '') jh_fehler('id oder geraet fehlt', 400);
     $antwort = jh_schreiben(function (array $s) use ($id, $geraet) {
         foreach ($s['auftraege'] as $i => $a) {
@@ -621,6 +637,7 @@ case 'log':
     if (!$post) jh_fehler('nur POST', 400);
     $text = jh_text($koerper['text'] ?? '', 300);
     if ($text === '') jh_fehler('text fehlt', 400);
+    $koerper['geraet'] = jh_geraet_name($jh_geraet, $koerper['geraet'] ?? '');
     jh_ende(jh_schreiben(function (array $s) use ($koerper, $text) {
         $s = jh_logzeile($s, jh_text($koerper['art'] ?? 'hinweis', 20), $text, jh_text($koerper['geraet'] ?? '', 40) ?: null);
         return [$s, ['ok' => true]];
@@ -628,6 +645,7 @@ case 'log':
 
 case 'spiegel':
     if (!$post) jh_fehler('nur POST', 400);
+    $koerper['quelle'] = jh_geraet_name($jh_geraet, $koerper['quelle'] ?? '');
     jh_ende(jh_schreiben(function (array $s) use ($koerper) {
         $c = jh_compass($s);
         if (isset($koerper['punkte']) && is_array($koerper['punkte'])) {

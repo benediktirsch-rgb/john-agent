@@ -9,13 +9,14 @@ nichts davon liegt im Repo (Regel 6).
 | Variable | Wert | Warum |
 |---|---|---|
 | `JOHN_HUB_URL` | `https://hotel-vaikuntha.de/john` | Johns Adresse (ADR 0005); ohne Variable nimmt das Skript genau diese |
-| `JOHN_HUB_TOKEN` | der Geräte-Schlüssel (wie auf vishnu-master) | ohne ihn bleibt die Wolke stumm, Exit 3 |
+| `JOHN_HUB_TOKEN` | der Schlüssel des Geräts `wolke` (`JOHN_HUB_TOKEN_WOLKE` vom Rechner) | ohne ihn bleibt die Wolke stumm, Exit 3 |
 | `JOHN_GERAET` | `wolke` | Name im Puls und im Logbuch; die Lobby zeigt „wach auf wolke“ |
 | `MOORCHEH_API_KEY` | Key von console.moorcheh.ai | Gedächtnis (memanto), optional |
 
-**Schlüssel-Hinweis (für Madeleines Gegenprüfung):** Der Geräte-Schlüssel darf alles. Ein eigener
-Schlüssel je Gerät wäre sauberer (Widerruf ohne Stillstand). Das braucht `token.php` mit einer Liste
-statt zwei Hashes und ist ein eigener Schritt, siehe `docs/stand.md` › Fehlt noch.
+**Schlüssel (ADR 0007):** Die Wolke bekommt ihren **eigenen** Schlüssel, gebunden an den Namen `wolke`.
+Auf dem Rechner: `setx JOHN_HUB_GERAETE vishnu-master,wolke`, dann `hub\hub-deploy.ps1 -GeraetErzeugen wolke`.
+Der einmal angezeigte Wert ist das `JOHN_HUB_TOKEN` dieser Umgebung. Mit ihm kann die Wolke nichts als
+vishnu-master tun, und Bene kann ihn neu würfeln, ohne dass der Rechner stehenbleibt.
 
 ## Setup-Skript der Umgebung
 

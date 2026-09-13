@@ -89,3 +89,9 @@ Alles User-Umgebungsvariablen, nie Dateien:
 `JOHN_HUB_URL`, `JOHN_HUB_TOKEN`, `JOHN_GERAET` (Standard: Rechnername), `JOHN_BACKEND`
 (`cli` = Claude-Abo, Standard), `VA_FTP_HOST/USER/PASS` (nur zum Hochladen der Rezeption).
 Änderungen wirken erst im **neu gestarteten** Prozess.
+
+Seit 12.09.2026 (ADR 0007) hat jedes Gerät seinen eigenen Schlüssel: `JOHN_HUB_GERAETE` nennt die Geräte,
+`JOHN_HUB_TOKEN_<NAME>` hält je einen; `hub-deploy.ps1` schreibt die Hashes nach `token.php`. Auf dem
+eigenen Rechner ist `JOHN_HUB_TOKEN` derselbe Wert wie `JOHN_HUB_TOKEN_<RECHNER>`; in der Wolke ist
+`JOHN_HUB_TOKEN` der Wert von `JOHN_HUB_TOKEN_WOLKE`. Ein gebundener Schlüssel darf nur unter seinem
+Namen auftreten (403 „dieser Schlüssel gehört zu …“). Widerruf: `hub-deploy.ps1 -GeraetErzeugen <name>`.

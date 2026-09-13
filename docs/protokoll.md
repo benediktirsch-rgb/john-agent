@@ -24,6 +24,7 @@ gitignoriert, erzeugt von `hub-deploy.ps1`):
 | Schlüssel | Variable | liegt wo | darf |
 |---|---|---|---|
 | **Gerät** (`hash`) | `JOHN_HUB_TOKEN` | Benutzerumgebung jedes Geräts | alles |
+| **Gerät, gebunden** (`geraete[name]`) | `JOHN_HUB_TOKEN_<NAME>` auf dem Rechner, als `JOHN_HUB_TOKEN` in der Umgebung des Geräts | je Gerät eines | alles, aber nur unter seinem Namen |
 | **Browser** (`hash_browser`) | `JOHN_HUB_TOKEN_BROWSER` | eingesetzt im gebauten eigenen Compass | `stand`, `punkt`, `auftrag`, `stapelstand` |
 
 Warum zwei (Madeleines Einwand, `beratung/protokoll.md`): ein Schlüssel im Browser ist ein Schlüssel,
@@ -31,6 +32,15 @@ der verloren gehen kann. Mit dem Browser-Schlüssel lässt sich Johns Stapel wed
 ein Auftrag beanspruchen oder ein Ergebnis fälschen, und er lässt sich einzeln neu würfeln, ohne dass
 ein Gerät stehenbleibt. Ohne Kopf oder mit falschem Schlüssel: **403**, nichts geschrieben. Ein
 Endpunkt außerhalb der Reichweite: **403** „dieser Schlüssel darf kein …".
+
+**Ein Schlüssel je Gerät (seit 12.09.2026, ADR 0007).** `token.php` trägt neben `hash_browser` eine
+Liste `geraete` (`name => SHA-256`). Ein Schlüssel aus dieser Liste ist an seinen Namen **gebunden**: die
+Rezeption nimmt `geraet` (bei `puls`, `nimm`, `log`), `quelle` (bei `stapel`, `spiegel`) nur an, wenn es
+leer ist (dann setzt sie den gebundenen Namen ein) oder genau dem Namen gehört. Ein anderer Name → **403**
+„dieser Schlüssel gehört zu <name>“. Damit kann ein geleakter Wolken-Schlüssel nicht als vishnu-master
+auftreten, und jeder Schlüssel lässt sich einzeln neu würfeln (`hub-deploy.ps1 -GeraetErzeugen <name>`),
+ohne dass ein anderes Gerät stehenbleibt. Der alte ungebundene Geräte-Schlüssel (`hash`) bleibt als
+Übergang gültig, bis jedes Gerät seinen eigenen hat; `hub-deploy.ps1 -NurGeraete` lässt ihn weg.
 
 **CORS:** kein `*`. Die Rezeption antwortet mit `Access-Control-Allow-Origin` nur den Ursprüngen,
 auf denen Johns Klienten laufen (`bene.vishnuartists.com`, `bene.vaikuntha.eu`, `vishnuartists.com`, `vishnu-artists.de`,
