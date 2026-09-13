@@ -90,3 +90,11 @@ Takt, der Vertrauen kostet).
 den Wächter gibt es jetzt in der Lobby; extern sichtbar im strengen Sinn (eine Nachricht an Bene,
 wenn John einen Tag still ist) ist er noch nicht. Das ist der nächste Auftrag an mich.
 
+## 12.09.2026 — Gerät „wolke“ (ADR 0006): Gegenprüfung steht aus
+
+**Nicht gefragt**, weil Madeleine nur über `frag-madeleine.ps1` von Benes Rechner erreichbar ist und diese
+Session in der Cloud lief. Bene hat die Entscheidung selbst getroffen („John im Web leben lassen, er muss aus
+meinem Vishnu-Master raus“). Die Fragen, die Madeleine der Sache nach stellen würde, stehen am Ende des ADR:
+ein Schlüssel je Gerät, Kosten je Woche (bis 75 kurze Sessions), was passiert, wenn drei Monate niemand die
+Routine anschaut. Bene stellt sie ihr beim nächsten Lauf; die Antwort kommt hier ungefiltert darunter.
+

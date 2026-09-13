@@ -49,6 +49,14 @@ header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Max-Age: 600');
 header('Cache-Control: no-store');
 header('X-Robots-Tag: noindex, nofollow');
+/* Haertung 12.09.2026 (mit dem Geraet „wolke“ traegt die Rezeption ein Geraet mehr, ADR 0006):
+   kein Raten des Inhaltstyps, kein Referrer nach aussen, HSTS nur auf Johns eigener Domain —
+   naturnah-lernen.de liefert dieselben Dateien und soll keine Host-weite Regel von hier erben. */
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: no-referrer');
+if (($_SERVER['HTTP_HOST'] ?? '') === 'hotel-vaikuntha.de' && (($_SERVER['HTTPS'] ?? '') === 'on' || ($_SERVER['SERVER_PORT'] ?? '') === '443')) {
+    header('Strict-Transport-Security: max-age=15552000');
+}
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') { http_response_code(204); exit; }
 
@@ -94,19 +102,70 @@ const JH_DARF = [
  * Jetzt hat der Browser einen eigenen Schluessel mit eigener Reichweite; er laesst sich
  * einzeln neu wuerfeln (hub-deploy.ps1), ohne dass ein Geraet stehenbleibt.
  */
+/* ---------- Bremse gegen Token-Raten (12.09.2026) ------------------------------------
+   Vorher konnte jeder beliebig oft raten; 403 kostete nichts. Jetzt zaehlt die Rezeption
+   Fehlversuche je Herkunft (nur als Hash, nie die Adresse selbst) in daten/bremse.json:
+   ab JH_BREMSE_MAX im Fenster antwortet sie 429 mit Retry-After, und jeder Fehlversuch
+   wartet kurz. Ein echtes Geraet mit richtigem Token merkt davon nichts. */
+const JH_BREMSE_DATEI   = JH_DATEN . '/bremse.json';
+const JH_BREMSE_MAX     = 20;     // Fehlversuche je Herkunft …
+const JH_BREMSE_FENSTER = 600;    // … in diesen Sekunden
+function jh_bremse_kennung(string $salz): string {
+    return substr(hash('sha256', $salz . '|' . ($_SERVER['REMOTE_ADDR'] ?? '')), 0, 24);
+}
+function jh_bremse_lesen(): array {
+    if (!is_file(JH_BREMSE_DATEI)) return [];
+    $d = json_decode((string)@file_get_contents(JH_BREMSE_DATEI), true);
+    return is_array($d) ? $d : [];
+}
+function jh_bremse_pruefen(string $salz): void {
+    $e = jh_bremse_lesen()[jh_bremse_kennung($salz)] ?? null;
+    if (!is_array($e)) return;
+    $vergangen = time() - (int)($e['seit'] ?? 0);
+    if ($vergangen < JH_BREMSE_FENSTER && (int)($e['n'] ?? 0) >= JH_BREMSE_MAX) {
+        header('Retry-After: ' . (JH_BREMSE_FENSTER - $vergangen));
+        jh_fehler('zu viele Fehlversuche', 429);
+    }
+}
+function jh_bremse_zaehlen(string $salz): void {
+    if (!is_dir(JH_DATEN)) { @mkdir(JH_DATEN, 0700, true); }
+    $fh = @fopen(JH_BREMSE_DATEI, 'c+b');
+    if ($fh && flock($fh, LOCK_EX)) {
+        $d = json_decode((string)stream_get_contents($fh), true);
+        if (!is_array($d)) $d = [];
+        $jetzt = time();
+        foreach ($d as $k => $e) {           // alte Fenster vergessen, die Datei bleibt klein
+            if (!is_array($e) || $jetzt - (int)($e['seit'] ?? 0) >= JH_BREMSE_FENSTER) unset($d[$k]);
+        }
+        $k = jh_bremse_kennung($salz);
+        $d[$k] = ['n' => (int)($d[$k]['n'] ?? 0) + 1, 'seit' => (int)($d[$k]['seit'] ?? $jetzt)];
+        ftruncate($fh, 0); rewind($fh); fwrite($fh, json_encode($d)); fflush($fh);
+        flock($fh, LOCK_UN);
+    }
+    if ($fh) fclose($fh);
+    usleep(300000);                          // 0,3 s je Fehlversuch — Raten wird langsam, Betrieb nicht
+}
+
 function jh_pruefe_token(): string {
     $datei = __DIR__ . '/token.php';
     if (!is_file($datei)) { jh_fehler('Rezeption nicht eingerichtet (token.php fehlt)', 500); }
     $cfg = require $datei;
     if (!is_array($cfg)) { jh_fehler('Rezeption nicht eingerichtet (kein Hash)', 500); }
+    $salz = substr((string)($cfg['hash'] ?? ''), 0, 16);   // serverseitig, nie ausgeliefert
     $ist = $_SERVER['HTTP_X_JOHN_TOKEN'] ?? '';
-    if (!is_string($ist) || $ist === '') { jh_fehler('kein Token', 403); }
-    $meins = hash('sha256', $ist);
-    foreach (['geraet' => 'hash', 'browser' => 'hash_browser'] as $klasse => $feld) {
-        $soll = (string)($cfg[$feld] ?? '');
-        if ($soll !== '' && hash_equals($soll, $meins)) { return $klasse; }
+    if (is_string($ist) && $ist !== '') {
+        $meins = hash('sha256', $ist);
+        foreach (['geraet' => 'hash', 'browser' => 'hash_browser'] as $klasse => $feld) {
+            $soll = (string)($cfg[$feld] ?? '');
+            if ($soll !== '' && hash_equals($soll, $meins)) { return $klasse; }
+        }
     }
-    jh_fehler('Token stimmt nicht', 403);
+    /* Erst der Vergleich, dann die Bremse: ein richtiger Schluessel kommt immer durch, auch wenn
+       hinter derselben Adresse (Router zu Hause: PC und Handy) gerade jemand falsch raet. Die Bremse
+       verteuert nur das Raten selbst. */
+    jh_bremse_pruefen($salz);
+    jh_bremse_zaehlen($salz);
+    jh_fehler((is_string($ist) && $ist !== '') ? 'Token stimmt nicht' : 'kein Token', 403);
     return '';
 }
 
@@ -349,8 +408,11 @@ if ($was !== '' && !in_array($was, JH_DARF[$jh_klasse] ?? [], true)) {
 $post = ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST';
 $koerper = [];
 if ($post) {
-    $roh = file_get_contents('php://input');
-    $koerper = json_decode((string)$roh, true);
+    /* 12.09.2026: hoechstens 256 KB. Ein Stapel hat 5 Punkte, ein Ergebnis 4000 Zeichen —
+       alles darueber ist kein Auftrag, sondern ein Versuch, die Rezeption zu beschaeftigen. */
+    $roh = (string)file_get_contents('php://input', false, null, 0, 262145);
+    if (strlen($roh) > 262144) jh_fehler('Anfrage zu gross', 413);
+    $koerper = json_decode($roh, true);
     if (!is_array($koerper)) $koerper = [];
 }
 

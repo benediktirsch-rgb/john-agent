@@ -37,6 +37,14 @@ Wer hier arbeitet, arbeitet daran, dass John läuft.
 7. **Parallele Sessions:** vor der Arbeit `C:\dev\_tools\git-flow.ps1 -Modus claim -Repo john-agent
    -Sitzung "…" -Ziel "…"`, am Ende `-Modus release`.
 
+## Zwei Geräte, ein Gedächtnis (seit 12.09.2026)
+
+- **Wolke:** John denkt auch ohne Rechner — eine Claude-Code-Routine arbeitet `geraet-wolke/TAKT.md` ab
+  (ADR 0006). Wer die Rezeption oder das Protokoll ändert, prüft `geraet-wolke/rezeption.sh` mit.
+- **memanto:** Was eine Session über John lernt (Regeln, Entscheidungen, Workarounds), geht per
+  `memanto remember` in den Agent `john`, nie Namen oder Beträge — Grenze und Typen in `docs/memanto.md`.
+  Vor Änderungen `memanto recall … --tool claude-code`. Fehlt das CLI, weiterarbeiten und es sagen.
+
 ## Ton
 
 Deutsch, Du-Form, deutsche Anführungszeichen „…". Begriffe: **Rezeption** (Hub im WWW), **Gerät**

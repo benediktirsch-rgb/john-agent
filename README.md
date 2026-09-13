@@ -15,6 +15,7 @@ Kosten, Organisation) zusammen. Was wir entscheiden, steht in `docs/adr/`; was w
 | Wie reden die Teile miteinander? | [`docs/protokoll.md`](docs/protokoll.md) |
 | Was läuft schon, was fehlt? | [`docs/stand.md`](docs/stand.md) |
 | Wie starte, prüfe, repariere ich? | [`docs/betrieb.md`](docs/betrieb.md) |
+| Was merkt sich John über Sessions hinweg? | [`docs/memanto.md`](docs/memanto.md) |
 | Was muss Bene im KAS von Hand tun? | [`docs/kas-schritte.md`](docs/kas-schritte.md) |
 | Wozu ist John überhaupt da? | [`wissen/zweck.md`](wissen/zweck.md) |
 | Warum so und nicht anders? | [`docs/adr/`](docs/adr/) |
@@ -25,6 +26,8 @@ Kosten, Organisation) zusammen. Was wir entscheiden, steht in `docs/adr/`; was w
   Stapel, seine Aufträge, sein Logbuch. Wach rund um die Uhr, denkt nie.
 - **Gerät** (`geraet/`) — `john-worker.ps1`, ein Prozess je Rechner. Johns Hände: Takt, Tür auf Port
   8788, Denken in abgekoppelten Kindprozessen.
+- **Wolke** (`geraet-wolke/`) — Johns zweites Gerät, ohne Rechner: eine Claude-Code-Routine, die stündlich
+  als John denkt und mit der Rezeption spricht (ADR 0006). Der Rechner ist schneller, die Wolke verlässlicher.
 - **Lobby** (`compass/`) — `compass-john-lobby.js`, hängt sich von außen an den Flow Compass. Erscheint,
   wenn John gerade nicht kann, zeigt seinen letzten Stand und startet ihn.
 
