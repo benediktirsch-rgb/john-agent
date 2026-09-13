@@ -45,7 +45,7 @@ $WachtTask   = 'John Server Wacht'
 $WorkerTask  = 'John Worker'
 $ServerSkript = Join-Path $Compass 'john-server-aufgabe.ps1'
 # Dateien, die hier gepflegt und in den Compass kopiert werden (Lobby 10.09., Gesprächsraum 11.09. von Astra)
-$CompassDateien = @('compass-john-lobby.js', 'compass-gespraechsraum.js')
+$CompassDateien = @('compass-john-lobby.js', 'compass-gespraechsraum.js', 'holodeck-engine/scenes.js', 'holodeck-engine/production.js', 'holodeck-engine/cinema.js', 'holodeck-engine/cinema.css', 'holodeck-engine/studio-audio.js', 'holodeck-engine/studio-direction.js', 'holodeck-engine/sternenszenen.js')
 
 function Da([string]$n) { return (Get-ScheduledTask -TaskName $n -ErrorAction SilentlyContinue) }
 function PortAntwortet([int]$p) {
@@ -66,6 +66,7 @@ function LobbySync {
     $neu = [IO.File]::ReadAllText($quelle, [Text.Encoding]::UTF8).Replace("`r`n", "`n")
     $alt = if (Test-Path $ziel) { [IO.File]::ReadAllText($ziel, [Text.Encoding]::UTF8) } else { '' }
     if ($alt -eq $neu) { Write-Host "${datei}: unveraendert"; continue }
+    [IO.Directory]::CreateDirectory((Split-Path -Parent $ziel)) | Out-Null
     [IO.File]::WriteAllText($ziel, $neu, (New-Object Text.UTF8Encoding($false)))
     Write-Host "$datei kopiert -> $ziel  ($($neu.Length) Zeichen)" -ForegroundColor Green; $kopiert = $true
   }

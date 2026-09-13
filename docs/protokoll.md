@@ -255,3 +255,22 @@ kosten. Nie zwei Zustandsdateien einführen, die zueinander passen müssen.
 - keinen Klartext aus Mails, Konten oder CRM speichern — ein Stapelpunkt nennt das Thema, nicht den Inhalt;
 - nichts an Bene senden (kein Mailversand, kein Push von dort aus);
 - nichts löschen, was ein Gerät gerade beansprucht hat.
+
+### Holodeck: Browserstimme und eingeladene Gastdarstellung (11.09.2026)
+
+Die Tür-Schnittstelle bleibt unverändert. Der Browser wandelt Sprache optional in Text um und
+sendet diesen ausschließlich an die lokale Tür. Browser-Spracherkennung kann Audio beim
+Browseranbieter verarbeiten; Aktivierung verlangt bewusste Wahl dieses Dienstes oder lokale
+Erkennung (falls Browser und Sprachpaket vorhanden). Kein Audio wird von uns aufgezeichnet,
+gespeichert oder an die Rezeption geschickt. Bestehende Modellverarbeitung des Texts bleibt gleich.
+
+Neue Antworten werden optional mit synthetischen Browserstimmen vorgelesen. Während Ausgabe
+und Modelllauf pausiert das Mikrofon. Unterbrechen beendet Ausgabe und ruft POST /stopp auf.
+Schließen, Hintergrund, Raumwechsel und Verbindungsverlust beenden den Sprachmodus.
+Keine Hintergrundaufnahme, kein Wiederholen alter Antworten, kein automatischer Retry eines POST.
+
+Gäste werden zunächst vorgeschlagen und nur per ausdrücklichem Klick eingeladen. John stellt
+die KI-Gastrolle dar, Madeleine bleibt sie selbst. Kein dritter Modellprozess, keine behauptete
+Originalstimme. Ein vor dem Senden angezeigter Rollenauftrag wird im lokalen Nachrichten-Text
+mitgeschickt; der Verlauf dokumentiert ihn. Die Auswahl gilt pro Raum und Browser-Sitzung.
+Vorbereitet: Nietzsche, Merz, Trump, Picard sowie fiktive Fachgäste für weitere Expertise.

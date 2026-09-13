@@ -94,3 +94,33 @@ nächste Session sieht, wo sie steht.
 ## Holodeck und Aufzug · 11.09.2026
 
 Oberfläche: #holodeck und alter #hotel-lobby öffnen denselben Raum. Fünf fotografische Welten, Tür-/Rasterübergang, große Raumansicht, manuelle und tägliche Garderobe (Europe/Berlin). Private Bilddateien in compass/holodeck-assets sind gitignored und nur hinter den vorhandenen Gates auszuliefern. Keine Änderung der Raumschnittstelle oder Freigabe für mobiles Schreiben. Persönlichkeitswünsche separat an Claude übergeben.
+
+## Holodeck-Stimme und Gäste · 11.09.2026
+
+Browser-Sprachmodus mit ausdrücklicher Aktivierung, optional lokaler Erkennung, automatischem
+Senden nach Sprechpause, synthetischen Stimmen pro Teilnehmer und Unterbrechen über /stopp.
+Gastvorschläge werden erst nach Klick eingeladen. John stellt die Gastrolle anhand des sichtbaren
+Auftrags dar; ein eigenständiger Gast-Worker ist noch nicht angebunden. Keine Originalstimmen.
+Browser-Funktionstest mit simuliertem Mikrofon, TTS und Tür prüft Einladung, Einzelsendung,
+Reihenfolge, Echo-Vermeidung, keine Wiederholung alter Antworten, Stoppen, Schließen und Ausfall.
+Eine echte Unterhaltung mit Benes Mikrofon und Lautsprechern muss Bene noch gegenhören.
+
+## Holodeck: 30 Filmszenen und freigegebene Charaktere · 11.09.2026
+
+Fotografische Filmstills ersetzen die einfachen 3D-Figuren. 30 auswählbare Szenen in fünf Orten,
+eigene Dialogauftakte, Kameraregie, Musik- und Castingvorgaben. Freigegebene John-Vorlage und
+dunkelhaarige Mona als Madeleine; schlanke sportliche Statur für den eigenen Avatar. Drei neue
+Garderobentafeln und Vishnu-/Brahma-/Shiva-Momente. Bilder bleiben privat und gitignoriert.
+Kein fertiges Video, keine tatsächliche Figurenbewegung, keine produzierte Musik oder Premiumstimme.
+
+Browserdialog in DE/EN/HI/IT/FR, nur verfügbare Stimmen. Castingwunsch: Madeleine mit französischem
+Akzent, John mit deutscher Travolta-Synchronwirkung. Das ist Regie, keine verfügbare Originalstimme.
+Der schnelle Schließen/Öffnen-Wechsel beendet den alten Sprachlauf; ein verspätetes close-Ereignis
+kann die neue Verbindungsprüfung nicht mehr abschalten. Mikrofon wartet auch auf Picards Begrüßung.
+
+Chrome-Prüfung: alle 30 Bilder geladen, reine Szenenwechsel senden nichts, Orte stimmen, einmalige
+Eröffnung, Introabbruch beim Schließen, göttliche Rolle, mobile Breite. Kontrollierter Sprachtest:
+englische Erkennung/Sprachauftrag/passende TTS-Auswahl, Gast nur auf Einladung, Ausgabe nacheinander,
+kein Echo oder erneutes Vorlesen alter Antworten, Stoppen, schnelles Wiederöffnen und Offline-Stopp.
+Echte Mikrofon-Hardware und professionelle Sprecherqualität sind noch nicht abgenommen.
+Details: docs/holodeck-film.md. Tür-API unverändert.
