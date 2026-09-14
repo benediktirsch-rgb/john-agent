@@ -33,7 +33,10 @@ nächste Session sieht, wo sie steht.
 
 ## Fehlt noch
 
-0. **Wolke anschalten — Rechnerseite erledigt 14.09.2026 (Claude):** `hub-deploy.ps1` parst fehlerfrei,
+0. **Wolke läuft seit 14.09.2026 22:41** (Umgebung „John“ `env_01Mo9sPNZwqrAUWqteRuwye5`, Netzwerk „Unbegrenzt“,
+   Variablen + Setup-Skript von Bene eingetragen; erster Takt: Puls angekommen, Logbuch „Neues Gerät: wolke“,
+   0 Aufträge). Offen: privates Repo `john` (Play-Knopf-Skript unten), Gmail/Kalender an der Routine, `-NurGeraete`.
+   Vorgeschichte — Rechnerseite (Claude): `hub-deploy.ps1` parst fehlerfrei,
    `JOHN_HUB_GERAETE=vishnu-master,wolke`, beide Geräteschlüssel erzeugt (`JOHN_HUB_TOKEN_VISHNU_MASTER` =
    `JOHN_HUB_TOKEN`, `JOHN_HUB_TOKEN_WOLKE`), `token.php` liegt in der Rezeption, Worker neu gestartet (Tür
    antwortet, Puls mit neuem Schlüssel angekommen). Routine „John · wolke“ (trig_01H2Kf7L7eU2ADjZmifGY4zt,

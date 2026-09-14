@@ -26,6 +26,15 @@ python3 -m venv /opt/memanto && /opt/memanto/bin/pip install -q memanto \
 [ -n "$MOORCHEH_API_KEY" ] && memanto agent activate john >/dev/null 2>&1 || true
 ```
 
+Der Agent `john` existiert je API-Key erst nach `memanto agent create john`; der Takt legt ihn beim ersten
+Lauf selbst an (TAKT.md, Abschnitt 1), das Setup-Skript muss das nicht tun.
+
+**Netzwerkzugriff der Umgebung: „Unbegrenzt“** (oder `hotel-vaikuntha.de` in der eigenen Liste). Mit
+„Vertraut“ blockt der Proxy der Umgebung die Rezeption mit `CONNECT 403` (gemessen 14.09.2026).
+
+**Repo als Quelle, nicht selbst klonen:** Das Repo `john-agent` muss in der Routine als Quelle stehen. Klont die
+Session es selbst, stuft der Klassifizierer `rezeption.sh` als „Code from External“ ein und verweigert den Aufruf.
+
 Debian-Python hat ein eigenes PyJWT, deshalb das venv (derselbe Stolperstein wie in flow-cockpit,
 `docs/memanto.md` dort).
 

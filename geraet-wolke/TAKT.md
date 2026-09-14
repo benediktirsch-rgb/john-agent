@@ -21,6 +21,7 @@ unter `/home/user/john`): `CLAUDE.md`, `profil/PROFIL.md`, `coaching/`. Fehlt da
 cd /home/user/john-agent 2>/dev/null || git clone --depth 1 https://github.com/benediktirsch-rgb/john-agent /home/user/john-agent
 R=/home/user/john-agent/geraet-wolke/rezeption.sh
 bash $R stand            # Exit 3 = JOHN_HUB_TOKEN fehlt → Abschnitt 6, dann Schluss
+memanto agent activate john >/dev/null 2>&1 || { memanto agent create john >/dev/null 2>&1 && memanto agent activate john >/dev/null 2>&1; }
 memanto recall --recent --limit 10 --tool claude-code 2>/dev/null || echo "memanto nicht angebunden"
 ```
 
