@@ -33,12 +33,17 @@ nächste Session sieht, wo sie steht.
 
 ## Fehlt noch
 
-0. **Wolke anschalten (Bene, 10 Minuten):** `JOHN_HUB_TOKEN`, `JOHN_GERAET=wolke`, `MOORCHEH_API_KEY` in der
-   Claude-Code-Umgebung setzen, Setup-Skript aus `geraet-wolke/umgebung.md` eintragen, privates Repo `john`
-   aus `C:\dev\john` anlegen und anhängen, Routine Gmail/Kalender geben. Vorher auf dem Rechner:
-   `[Management.Automation.Language.Parser]::ParseFile` über `hub\hub-deploy.ps1`, dann
-   `setx JOHN_HUB_GERAETE vishnu-master,wolke` und `hub-deploy.ps1 -GeraetErzeugen wolke` — der angezeigte
-   Schlüssel ist das `JOHN_HUB_TOKEN` der Cloud-Umgebung. Worker neu starten. Wenn beide Geräte laufen:
+0. **Wolke anschalten — Rechnerseite erledigt 14.09.2026 (Claude):** `hub-deploy.ps1` parst fehlerfrei,
+   `JOHN_HUB_GERAETE=vishnu-master,wolke`, beide Geräteschlüssel erzeugt (`JOHN_HUB_TOKEN_VISHNU_MASTER` =
+   `JOHN_HUB_TOKEN`, `JOHN_HUB_TOKEN_WOLKE`), `token.php` liegt in der Rezeption, Worker neu gestartet (Tür
+   antwortet, Puls mit neuem Schlüssel angekommen). Routine „John · wolke“ (trig_01H2Kf7L7eU2ADjZmifGY4zt,
+   stündlich `0 4-18 * * 1-5`) hat jetzt `john-agent` als **Quelle** — bis dahin klonte sie selbst, und der
+   Klassifizierer der Cloud verweigerte `rezeption.sh` als „Code from External“ (Lauf 14.09. 18:02 UTC).
+   **Offen, nur Bene:** in claude.ai/code → Environments → Default die Variablen `JOHN_HUB_TOKEN`
+   (= `[Environment]::GetEnvironmentVariable('JOHN_HUB_TOKEN_WOLKE','User')`), `JOHN_GERAET=wolke`, optional
+   `MOORCHEH_API_KEY` und das Setup-Skript aus `geraet-wolke/umgebung.md` eintragen; privates Repo `john`
+   per `C:\dev\_tools\john-repo-anlegen.ps1` anlegen (Play-Knopf; der Klassifizierer blockt das für Claude)
+   und als zweite Quelle anhängen; der Routine Gmail/Kalender geben. Wenn beide Geräte laufen:
    `hub-deploy.ps1 -NurGeraete`.
 1. **Takt-Funde in den Stapel statt daneben.** Heute stehen sie als eigener Block auf der Kachel; ein Klick
    sortiert neu (ein Claude-Aufruf im Server, bis 90 s). Eleganter: der Server nimmt `letzter-takt.json` als
