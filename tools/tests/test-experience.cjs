@@ -1,0 +1,73 @@
+const {chromium}=require('playwright');
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+(async()=>{
+ const browser=await chromium.launch({headless:true, ...(process.env.HOLODECK_BROWSER_CHANNEL ? {channel:process.env.HOLODECK_BROWSER_CHANNEL} : {})});
+ try {
+ const page=await browser.newPage({viewport:{width:1440,height:950},reducedMotion:'reduce'});
+ let online=true,posts=[],errors=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ await page.route('**/*',async route=>{
+  const u=new URL(route.request().url());
+  if(u.pathname==='/raeume')return online?route.fulfill({json:{ok:true,raeume:[]}}):route.abort('failed');
+  if(u.pathname==='/raum'&&route.request().method()==='POST'){posts.push(route.request().postDataJSON());return route.fulfill({json:{ok:true,id:'test',wartet:false}});}
+  if(u.pathname==='/raum')return route.fulfill({json:{ok:true,zuege:[{zug:1,wer:'john',text:'Was beschäftigt dich heute?',zeit:new Date().toISOString()}],wartet:[],laeuft:null}});
+  if(u.pathname==='/stopp')return route.fulfill({json:{ok:true,gestoppt:true}});
+  if(u.pathname==='/')return route.fulfill({contentType:'text/html',body:'<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><script>window.JOHN_TUER="http://127.0.0.1:19091"</script><script src="/compass-gespraechsraum.js"></script></body></html>'});
+  if(u.pathname.endsWith('/manifest.json'))return route.fulfill({json:{assets:{'enterprise-lounge':{poster:'enterprise-lounge.webp'}}}});
+  // Deterministic fixture: no private or unversioned production media required.
+  if(/\.(webp|png)$/.test(u.pathname))return route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="1672" height="941"><rect width="1672" height="941" fill="#132433"/></svg>'});
+  const p=path.resolve(__dirname,'../../compass','.'+u.pathname);
+  const compass=path.resolve(__dirname,'../../compass')+path.sep;
+  if(!p.startsWith(compass))return route.fulfill({status:403,body:''});
+  if(fs.existsSync(p)&&fs.statSync(p).isFile())return route.fulfill({body:fs.readFileSync(p),contentType:p.endsWith('.png')?'image/png':p.endsWith('.webp')?'image/webp':p.endsWith('.css')?'text/css':'application/javascript'});
+  return route.fulfill({status:404,body:''});
+ });
+ await page.goto('http://127.0.0.1:19091/#holodeck');
+ await page.getByRole('button',{name:'In Ruhe eintreten',exact:true}).waitFor();
+ await page.waitForFunction(()=>document.querySelector('.holo-background').naturalWidth>0);
+ await page.getByRole('button',{name:'In Ruhe eintreten',exact:true}).click();
+ await page.getByRole('button',{name:'An den Strand',exact:false}).click();
+ await page.locator('[data-phase=conversation]').waitFor();
+ assert.equal(posts.length,0,'Entering and seating must not send prompts');
+ await page.waitForFunction(()=>document.querySelector('.holo-background').src.endsWith('scene-13.webp')&&document.querySelector('.holo-background').naturalWidth>0);
+ await page.getByRole('button',{name:'Ein wichtiges Thema',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('.holo-subtitle').textContent.includes('Was beschäftigt'));
+ assert.equal(posts.length,1,'One click sends one briefing');
+ assert(!posts[0].text.includes('Git-Stand'),'No stale project context');
+ await page.getByRole('button',{name:'Sprechen',exact:true}).click();
+ assert(await page.locator('.jgr-voice').isVisible());
+ assert.equal(await page.locator('.jgr-voice input[type=checkbox]').first().isChecked(),false,'No implied mic consent');
+ await page.getByRole('button',{name:'Zurück in den Raum',exact:true}).click();
+ online=false;
+ await page.waitForFunction(()=>document.querySelector('.holo-experience').dataset.connection==='offline');
+ await page.getByRole('button',{name:'Ein wichtiges Thema',exact:true}).click();
+ await page.getByLabel('Gedanken für später').fill('Meine offene Frage');
+ assert.equal(posts.length,1,'Offline reflection never sends');
+ online=true;
+ await page.waitForFunction(()=>document.querySelector('.holo-experience').dataset.connection==='online');
+ assert.equal(posts.length,1,'Recovery never sends');
+ await page.getByRole('button',{name:'Als Entwurf übernehmen',exact:true}).click();
+ assert.equal(await page.locator('.jgr-main textarea').first().inputValue(),'Meine offene Frage');
+ assert.equal(posts.length,1,'Transfer only creates draft');
+ await page.getByRole('button',{name:'Zurück in den Raum',exact:true}).click();
+ await page.setViewportSize({width:390,height:844});
+ assert(await page.locator('.holo-experience').evaluate(n=>n.scrollWidth<=n.clientWidth));
+ await page.getByRole('button',{name:'Anderer Platz',exact:true}).click();
+ await page.getByRole('button',{name:'An die Bar',exact:false}).click();
+ await page.locator('[data-phase=conversation]').waitFor();
+ await page.getByRole('button',{name:'Anderer Platz',exact:true}).click();
+ await page.getByRole('button',{name:'An den Tisch',exact:false}).click();
+ await page.locator('[data-phase=conversation]').waitFor();
+ await page.getByRole('button',{name:'Anderer Platz',exact:true}).click();
+ await page.getByRole('button',{name:'Auf die Enterprise',exact:false}).click();
+ await page.locator('[data-phase=conversation]').waitFor();
+ await page.waitForFunction(()=>document.querySelector('.holo-background').src.endsWith('enterprise-lounge.webp')&&document.querySelector('.holo-background').naturalWidth>0);
+ await page.setViewportSize({width:1440,height:950});
+ await page.getByRole('button',{name:'Verabschieden',exact:true}).click();
+ await page.locator('[data-phase=goodbye]').waitFor();
+ await page.getByRole('button',{name:'Raum verlassen',exact:true}).click();
+ assert.equal(await page.locator('dialog').evaluate(d=>d.open),false);
+ assert.deepEqual(errors,[]);
+ console.log('PASS: entry, all seats, no auto-send, briefing, mic consent, offline reflection, recovery, draft, mobile, goodbye; no page errors.');
+ } finally { await browser.close(); }
+})().catch(e=>{console.error(e);process.exitCode=1});

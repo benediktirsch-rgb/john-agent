@@ -274,3 +274,98 @@ die KI-Gastrolle dar, Madeleine bleibt sie selbst. Kein dritter Modellprozess, k
 Originalstimme. Ein vor dem Senden angezeigter Rollenauftrag wird im lokalen Nachrichten-Text
 mitgeschickt; der Verlauf dokumentiert ihn. Die Auswahl gilt pro Raum und Browser-Sitzung.
 Vorbereitet: Nietzsche, Merz, Trump, Picard sowie fiktive Fachgäste für weitere Expertise.
+
+## Holodeck: Wolken-Coach und Avatar-Ausgabe (15.09.2026)
+
+Dieser Abschnitt ergänzt die Rezeption, ersetzt deren Geräte-/Hub-Vertrag aber nicht.
+**Ist:** `compass/holodeck-engine/coach-door.js` adaptiert die bestehende Wolken-API
+`GET /status` und `POST /api/john` auf die lokalen Raumoperationen im Browser.
+Nur John antwortet. Räume existieren im Arbeitsspeicher der Browser-Sitzung.
+Unterbrechen beendet Audio und Empfang; es bestätigt keinen Modellstopp auf dem Server.
+Die Anmeldung funktioniert laut Betriebsübergabe vom 15.09.2026, 11:10 wieder.
+Server, Zugänge und Instanzen werden ausschließlich auf der Infrastruktur-Wikiseite
+2771189762 dokumentiert; keine Zugangsadresse oder Schlüssel in diesem Vertrag.
+
+### Avatar-Vertrag v1 — Vorschlag, noch kein aktiver Renderer
+
+Die Regie steuert Zustände, ein Renderer nur Bild und Bewegung. Er bekommt weder
+Coaching-Kontext noch Mikrofon-Rohdaten und ruft kein Sprachmodell auf. John bleibt
+die einzige KI-Persona. Ein Renderer implementiert:
+
+```ts
+type AvatarState = 'idle' | 'listening' | 'thinking' | 'speaking';
+type Cue = {atMs: number; durationMs: number; viseme: string; weight: number};
+interface AvatarRenderer {
+  capabilities: {states: AvatarState[]; visemes: boolean};
+  prepare(input: {manifestVersion: 1; assets: Record<string, string>},
+          signal: AbortSignal): Promise<void>;
+  setState(input: {sessionId: string; turnId: string; state: AvatarState}): void;
+  presentSpeech(input: {
+    sessionId: string; turnId: string; cues: Cue[];
+    // Wiedergabezeit der tatsächlich hörbaren Audiospur, nicht Antwortankunft.
+    playbackTimeMs: () => number;
+  }): void;
+  stop(input: {sessionId: string; turnId: string}): void;
+  dispose(): void;
+}
+```
+
+Audio gehört dem Sprachplayer; stumme Clips dürfen keine zweite Stimme abspielen.
+Der Player ist die Zeitquelle: Start erst bei tatsächlicher Wiedergabe, Pause friert
+Bewegung ein, Ende führt zu idle. Cues müssen monoton, endlich und innerhalb der
+Audiodauer liegen; Gewichte liegen zwischen 0 und 1. Unbekannte Viseme werden neutral.
+Ein Wechsel oder Abbruch entwertet die turnId vor dem Stoppen; verspätete Cues werden
+verworfen. `stop` und `dispose` müssen wiederholbar sein und Ressourcen freigeben.
+Renderer-Fehler dürfen Audio, Untertitel und Unterbrechen nicht blockieren.
+
+Browser-Sprachausgabe bietet hier bislang keine verlässliche Visem-Zeitspur.
+Ohne gemessene Zeitspur und geeigneten Renderer wird **keine Lippensynchronität**
+behauptet. Zuhören/Denken dürfen vorbereitete echte Bewegungsschleifen verwenden;
+ein Reaktionsclip wird nur durch explizite Regie ausgelöst, nicht aus einer vermuteten
+Emotion des Nutzers abgeleitet. Antworttext allein ist kein verlässlicher Mimik-Takt.
+
+Medien werden nur über die bestehende geprüfte Asset-URL-Auflösung geladen. Das
+bisherige Manifest `{assets: {id: {poster, video}}}` bleibt kompatibel. Eine künftige
+versionierte Erweiterung `avatar: {version: 1, john: {idle, listening, thinking}}`
+verweist auf Asset-IDs. Sie wird erst mit echten Medien und einem getesteten Renderer
+aktiviert. Fehlende Clips führen zum Poster mit ehrlicher Kennzeichnung. Bei
+reduzierter Bewegung bleibt die Darstellung statisch; Stimme und Untertitel funktionieren.
+Ein Raumloop ist Kulisse und ersetzt keine individuelle Gesichtsanimation.
+
+### Server-Stopp v1 — Vorschlag für Claude, nicht implementiert
+
+Ziel: HTTP-Auslieferung und Modellarbeit trennen. Ein kurzer HTTP-Aufruf legt einen
+Auftrag an; ein begrenzter Worker führt ihn aus. Status und Stopp bleiben währenddessen
+erreichbar. Keine Modellaufrufe im ausliefernden Prozess. Der bisherige `/api/john`-Weg
+bleibt kompatibel, bis eine explizite Capability die neue Umsetzung bestätigt.
+
+| Operation | Vorgeschlagener Vertrag |
+|---|---|
+| `GET /status` | zusätzlich `capabilities.holodeckJobs=1` und `capabilities.cancelJob=true`; erst nach implementierter Abnahme melden |
+| `POST /api/holodeck/jobs` | `{requestId, messages, context}` → HTTP 202 `{jobId, state:'queued'}`; John ist serverseitig festgelegt |
+| `GET /api/holodeck/jobs/{jobId}` | `{jobId,state}` mit `queued/running/completed/cancel_requested/cancelled/failed`; bei completed zusätzlich `text` |
+| `POST /api/holodeck/jobs/{jobId}/cancel` | wiederholbar; HTTP 202 `cancel_requested` oder HTTP 200 terminaler Zustand; kein Erfolg allein durch Socket-Abbruch |
+
+Bestehende Authentisierung und Herkunftsprüfung gelten weiter. Jede jobId gehört
+genau einer authentisierten Instanz; fremde und unbekannte IDs liefern gleichermaßen
+404. UUIDs sind Identifikatoren, keine Zugangsberechtigung. requestId verhindert
+doppeltes Starten derselben Anfrage; gleiche ID mit anderem Inhalt ergibt 409.
+Für den Anfang maximal ein laufender Auftrag je Instanz, keine unbegrenzte Warteschlange;
+Überlast wird als 429 mit Retry-After beantwortet, ohne automatisches erneutes Senden.
+Text- und Kontextgrößen werden vor Annahme begrenzt.
+
+`cancelled` darf der Server erst melden, wenn der Auftrag aus der Warteschlange entfernt
+oder der zugehörige Worker samt Kindprozessen nachweislich beendet wurde. Eine inzwischen
+fertige Antwort bleibt `completed`; Abbruch darf sie nicht nachträglich als gestoppt
+deklarieren. Wiederholte Cancel-Aufrufe verändern terminale Zustände nicht.
+Nach Empfangsabbruch zeigt der Browser auch ein spätes completed-Ergebnis nicht ungefragt.
+Bei Timeout lautet der Zustand „Stopp nicht bestätigt“; keine automatische Wiederholung
+des Gesprächs. Bei fehlender Capability bleibt „Unterbrechen = Empfang aus“ bestehen.
+
+Vorschlag zur Aufbewahrung: terminale Ergebnisse höchstens 15 Minuten im Arbeitsspeicher,
+keine Gesprächsinhalte im Betriebslog. Nach Neustart liefern verlorene Jobs 404;
+die Oberfläche benennt den Verlust und sendet keinen Auftrag erneut. Laufende Jobs
+haben eine feste maximale Laufzeit; deren Beendigung nutzt denselben Worker-Abbruchpfad.
+Erst nach Last-, Authentisierungs-, Neustart- und Prozessabbruchtests wird die Capability
+aktiviert. Der Browseradapter wechselt niemals aufgrund eines einzelnen 404 heimlich
+zwischen altem und neuem Versandweg.

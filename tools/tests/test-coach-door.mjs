@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import {createCoachDoor} from '../../compass/holodeck-engine/coach-door.js';
+let sent=[],complete;
+const fake=async(url,options)=>{
+ if(url.endsWith('/status'))return {ok:true,json:async()=>({ok:true})};
+ sent.push(JSON.parse(options.body));
+ return new Promise(resolve=>{complete=text=>resolve({ok:true,json:async()=>({text})});});
+};
+const door=createCoachDoor('https://coach.example.test/tenant',fake);
+await door.request('/raeume');assert.equal(sent.length,0);
+await assert.rejects(door.request('/raum',{text:'Hallo',an:'beide'}),/nur John/);
+const room=await door.request('/raum',{text:'Hallo John',an:'john'});
+assert.equal(sent.length,1);
+assert.equal((await door.request('/raum?id='+room.id)).laeuft.an,'john');
+await assert.rejects(door.request('/raum',{id:room.id,text:'Noch einmal',an:'john'}),/abwarten/);
+complete('Hallo, was beschäftigt dich?');await new Promise(r=>setImmediate(r));
+let state=await door.request('/raum?id='+room.id);assert.equal(state.zuege[1].wer,'john');assert.equal(state.laeuft,null);
+await door.request('/raum/weitergeben',{id:room.id,zug:1,weitergeben:false});
+await door.request('/raum',{id:room.id,text:'Mein nächstes Thema',an:'john'});
+assert.equal(sent[1].messages.some(m=>m.content==='Hallo John'),false);
+const stopped=await door.request('/stopp',{id:room.id});assert.equal(stopped.serverStopUnavailable,true);
+complete('Verspätete Antwort');await new Promise(r=>setImmediate(r));
+state=await door.request('/raum?id='+room.id);assert.equal(state.zuege.some(t=>t.text==='Verspätete Antwort'),false);
+assert.equal(sent.length,2,'No automatic retries');
+door.dispose();assert.throws(()=>createCoachDoor('http://coach.example.test'),/HTTPS/);
+const unready=createCoachDoor('https://coach.example.test',async()=>({ok:true,json:async()=>({ok:true,backend:'cli',login:{ok:false}})}));
+await assert.rejects(unready.request('/raeume'),/NO_LOGIN/);unready.dispose();
+console.log('PASS: no send on health, John-only, answer mapping, concurrent-send guard, holdback, cancellation discards late reply, no retry, HTTPS.');

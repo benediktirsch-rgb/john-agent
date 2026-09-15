@@ -152,3 +152,12 @@ Astra im Postfach als `claude-holodeck-erlebnisraum-20260915-01`.
 
 Noch nicht abgenommen: ein echtes Gespräch über den Wolken-Coach mit Benes Anmeldung — der erste Zug
 gehört ihm. Tür-API unverändert.
+
+## Übergabe weitergeführt · 15.09.2026
+
+Portable Prüfungen liegen unter `tools/tests/` mit npm-Lockdatei und eigener Anleitung.
+Adapter- und Browserprüfung bestehen lokal; UI-Fixtures benötigen keine privaten Medien.
+`docs/protokoll.md` beschreibt Avatar-Zeitspur und asynchrone Jobs mit bestätigtem Cancel
+als Vorschlag. Noch kein Renderer und keine neuen Server-Endpunkte implementiert.
+Laut Betriebsübergabe um 11:10 antwortet John seit 10:55 wieder; ein neues persönliches
+Coaching-Gespräch wurde durch diese Tests nicht ausgelöst. Echte Bewegungsclips fehlen.

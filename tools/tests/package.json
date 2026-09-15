@@ -1,0 +1,12 @@
+{
+  "name": "holodeck-tests",
+  "private": true,
+  "scripts": {
+    "test": "node test-coach-door.mjs && node test-experience.cjs",
+    "test:adapter": "node test-coach-door.mjs",
+    "test:ui": "node test-experience.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}
