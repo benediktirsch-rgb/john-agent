@@ -104,14 +104,14 @@ export function mountHolodeck(host, options = {}) {
     stopGuide(); setPhase('seating'); subtitle.hidden = true;
     center.append(make('p','holo-eyebrow','WO MÖCHTEST DU SEIN?'),make('h3','','Such dir einen Platz.'));
     const seats = make('div','holo-seats');
-    for (const [key, title, detail] of [['bar','An die Bar','Ein lockerer Austausch'],['huette','An den Tisch','Zeit für ein wichtiges Thema'],['goa','An den Strand','Durchatmen und Gedanken sortieren']]) {
+    for (const [key, title, detail] of [['enterprise','Auf die Enterprise','Coaching zwischen den Sternen'],['bar','An die Bar','Ein lockerer Austausch'],['huette','An den Tisch','Zeit für ein wichtiges Thema'],['goa','An den Strand','Durchatmen und Gedanken sortieren']]) {
       const seat = button(title, () => sit(key), 'holo-seat'); seat.append(make('small','',detail)); seats.append(seat);
     }
     center.append(seats); bottom.append(sound);
   }
   function sit(key) {
     place = key; options.onPlace?.(key); audio.setScene(key);
-    setPhase('transition'); showAsset(({bar:'scene-02',huette:'scene-07',goa:'scene-13',anden:'scene-19',rom:'scene-25'})[key] || 'scene-02');
+    setPhase('transition'); showAsset(({enterprise:'enterprise-lounge',bar:'scene-02',huette:'scene-07',goa:'scene-13',anden:'scene-19',rom:'scene-25'})[key] || 'scene-02');
     image.alt = (options.places?.[key] || key) + ' mit John und Madeleine';
     center.append(make('h3','','Hier ist dein Platz.'),button('Platz nehmen', converse, 'holo-primary'));
     clearTimeout(transitionTimer); transitionTimer = setTimeout(converse, reduced ? 0 : 1400);

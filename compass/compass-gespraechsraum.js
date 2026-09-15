@@ -23,7 +23,7 @@
   let holo3d = null, holoLoading = false, use3d = true, holoVersion = 0;
   let syncViewControls = () => {};
   const engineBase = new URL('holodeck-engine/', document.currentScript?.src || location.href).href;
-  const places = { bar: 'Bar im Hotel Vaikuntha', huette: 'Berghütte', goa: 'Goa', anden: 'Anden', rom: 'Altstadt von Rom' };
+  const places = { enterprise: 'Enterprise · Aussichtslounge', bar: 'Bar im Hotel Vaikuntha', huette: 'Berghütte', goa: 'Goa', anden: 'Anden', rom: 'Altstadt von Rom' };
   const e = (tag, attrs = {}, text) => {
     const node = document.createElement(tag);
     for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
@@ -55,7 +55,9 @@
       return data;
     } finally { clearTimeout(timeout); }
   }
-  const local = (path, body) => request(door + path, body);
+  let cloudCoach = null;
+  const coachBase = typeof JOHN_API === 'string' && JOHN_API.startsWith('https://') ? JOHN_API : '';
+  const local = (path, body) => cloudCoach ? cloudCoach.request(path, body) : request(door + path, body);
   const reception = (action, body) => request(hub + '/api.php?w=' + action, body, { 'X-John-Token': token });
   // Gezeichnete Figuren sind Rollenbilder, keine behaupteten Porträts realer Personen.
   const assetBase = new URL('holodeck-assets/', document.currentScript?.src || location.href).href;
@@ -89,7 +91,7 @@
     if (mode !== 'local') return 'Die lokale Tür ist nicht erreichbar. Dein Thema bleibt hier zur Auswahl; es wurde nichts gesendet.';
     if (busy || lastRun || waiting.length || input.value.trim()) return 'Im Gespräch liegt bereits ein Entwurf oder ein laufender Zug. Bitte dort fortsetzen und das Thema danach auswählen.';
     holo3d?.stopGuide();
-    const an = ['john', 'madeleine', 'beide'].includes(item.an) ? item.an : 'beide';
+    const an = cloudCoach ? 'john' : ['john', 'madeleine', 'beide'].includes(item.an) ? item.an : 'beide';
     input.value = item.prompt; recipient.value = an; controls(); form.requestSubmit();
     return 'Dein Thema wird übergeben. ' + (voiceOn ? 'Die Antwort hörst du hier im Raum.' : 'Aktiviere Sprechen für die nächste Antwort mit Stimme; der Verlauf bleibt erreichbar.');
   }
@@ -100,7 +102,7 @@
       const module = await import(engineBase + 'experience.js');
       if (version !== holoVersion || !use3d) return;
       stage.classList.add('jgr-three');
-      holo3d = module.mountHolodeck(stage, {place:place.value,places,context:location.hostname==='bene.vaikuntha.eu'?'verein':'personal',onRecipient:who=>{if(recipient)recipient.value=who;input?.focus({preventScroll:true});},onPlace:value=>{place.value=value;},onBriefing:briefingMessage,onPanel:showPanel,onPhase:()=>{dialog?.classList.remove('jgr-panel-open');},onVoice:()=>{if(voiceOn){voiceButton.click();return;}showPanel('voice');voiceButton.focus();},onInterrupt:()=>voiceInterrupt?.click(),onClose:()=>dialog.close(),getLanguage:()=>language.value,getHostVoice:()=>castVoice('picard')});
+      holo3d = module.mountHolodeck(stage, {place:place.value,places,context:location.hostname==='bene.vaikuntha.eu'?'verein':'personal',onRecipient:who=>{if(recipient)recipient.value=who;input?.focus({preventScroll:true});},onPlace:value=>{place.value=value;},onBriefing:briefingMessage,onPanel:showPanel,onPhase:()=>{dialog?.classList.remove('jgr-panel-open');},onVoice:startRoomVoice,onInterrupt:()=>voiceInterrupt?.click(),onClose:()=>dialog.close(),getLanguage:()=>language.value,getHostVoice:()=>castVoice('picard')});
       for (const who of Object.keys(wardrobe)) holo3d.setOutfit(who,outfitIndex(who));
       holo3d.setConnection?.(mode);
       if (!dialog?.open) holo3d.pause();
@@ -394,7 +396,7 @@
     voiceInterrupt.addEventListener('click',()=>{
       holo3d?.stopGuide();
       endVoice('Ton aus. Laufender Zug wird gestoppt; danach Sprachgespräch neu starten.');
-      if(mode==='local' && id && !busy) mutate(async()=>{await local('/stopp',{id});lastRun=null;waiting=[];});
+      if(mode==='local' && id && !busy) mutate(async()=>{const result=await local('/stopp',{id});lastRun=null;waiting=[];if(result.serverStopUnavailable){error.textContent='Audio und Antwortempfang aus. Der Server kann weiterarbeiten; Modellstopp ist hier noch nicht verfügbar.';showPanel('history');}});
     });
     for(const box of [voiceConsent,voiceLocal])box.addEventListener('change',()=>endVoice('Erkennungsmodus geändert. Bitte Sprachgespräch neu starten.'));
     voiceReply.addEventListener('change',()=>{if(voiceOn)endVoice('Vorlesen geändert. Bitte Sprachgespräch neu starten.');});
@@ -466,6 +468,7 @@
   }
   function controls() {
     holo3d?.setConnection?.(mode);
+    if(cloudCoach && recipient){recipient.value='john';for(const option of recipient.options)option.disabled=option.value!=='john';}
     const writable = mode === 'local' && !busy;
     form.hidden = mode !== 'local';
     input.disabled = topic.disabled = recipient.disabled = !writable;
@@ -594,7 +597,7 @@
       if (recovering) { turns = new Map(); round = 0; }
       if (!id) {
         log.replaceChildren(e('p', {}, 'Wähle einen Raum oder beginne ein neues Gespräch.'));
-        status.textContent = 'Die Tür ist erreichbar. Bereit für Dein Gespräch.';
+        status.textContent = cloudCoach ? 'Wolken-Coach John bereit · Sitzung nur bis zum Neuladen · Modellstopp nicht verfügbar.' : 'Die Tür ist erreichbar. Bereit für Dein Gespräch.';
       } else await refreshRoom();
       round++;
     } catch (cause) { fail(cause); }
@@ -620,6 +623,10 @@
     dialog.dataset.panel=name; dialog.classList.add('jgr-panel-open');
     if(name==='voice'){const panel=dialog.querySelector('.jgr-voice');if(panel)panel.open=true;}
     if(name==='write') { if(mode!=='local'){dialog.dataset.panel='offline';return;} input.focus(); }
+  }
+  function startRoomVoice() {
+    if(voiceOn || voiceConsent?.checked || voiceLocal?.checked){voiceButton.click();if(!voiceOn)showPanel('voice');return;}
+    showPanel('voice');voiceButton.focus();
   }
   function build() {
     document.head.append(e('link',{rel:'stylesheet',href:engineBase+'cinema.css'}));
@@ -674,6 +681,20 @@
     expand.addEventListener('click', () => showPanel('history'));
     const audioSettings=e('button',{type:'button'},'Stimme & Mikrofon'); audioSettings.addEventListener('click',()=>showPanel('voice'));
     head.append(e('h2', { id: 'jgr-title' }, 'Vaikuntha · Holodeck'), expand, audioSettings, close);
+    if(coachBase){
+      const connect=e('button',{type:'button'},'Wolken-Coach verbinden');
+      connect.addEventListener('click',async()=>{
+        if(busy||id||input.value.trim()){error.textContent='Bitte zuerst einen neuen leeren Raum öffnen. Bestehende Inhalte werden nicht zum Wolken-Coach übertragen.';showPanel('history');return;}
+        connect.disabled=true;
+        try {
+          const {createCoachDoor}=await import(engineBase+'coach-door.js');
+          const candidate=createCoachDoor(coachBase);await candidate.request('/raeume');
+          if(polling){candidate.dispose();throw Error('Verbindungsprüfung läuft noch. Bitte kurz erneut versuchen.');}
+          cloudCoach=candidate;mode='local';id='';rooms=[];turns=new Map();epoch++;endVoice();
+          recipient.value='john';connect.textContent='Wolken-Coach · nur John';controls();schedule(0);
+        }catch(cause){connect.disabled=false;error.textContent=cause.message;showPanel('history');}
+      });head.append(connect);
+    }
     const settings = e('div', { class: 'jgr-setting' });
     const placeLabel = e('label', {}, 'Unser Ort'); place = e('select', { 'aria-label': 'Unser Ort' });
     for (const [value, label] of Object.entries(places)) place.append(e('option', { value }, label));
@@ -742,8 +763,8 @@
     });
     stop = e('button', { type: 'button' }, 'Gespräch stoppen');
     stop.addEventListener('click', () => { endVoice(); mutate(async () => {
-      const result = await local('/stopp', { id });
-      status.textContent = result.gestoppt ? 'Gespräch gestoppt.' : 'Es läuft und wartet gerade kein Zug.';
+        const result = await local('/stopp', { id });
+        status.textContent = result.serverStopUnavailable ? 'Antwortempfang gestoppt. Ein serverseitiger Modellstopp ist hier nicht verfügbar.' : result.gestoppt ? 'Gespräch gestoppt.' : 'Es läuft und wartet gerade kein Zug.';
       lastRun = null; waiting = [];
     }); });
     const back=e('button',{type:'button'},'Zurück in den Raum'); back.addEventListener('click',()=>dialog.classList.remove('jgr-panel-open'));
