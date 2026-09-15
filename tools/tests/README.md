@@ -25,3 +25,14 @@ Parallelauftragsvermeidung, Zurückhalten, verspätete Antworten nach Empfangsab
 fehlende Anmeldung und ausbleibende automatische Wiederholungen ab.
 
 Die Tests ersetzen keine Hörprobe, Mikrofonprüfung, Medienabnahme oder Live-Serverprüfung.
+
+Mit dem separat gelieferten Medienpaket zusätzlich:
+
+```powershell
+$env:HOLODECK_MEDIA_DIR='C:/Pfad/zum/holodeck-motion'
+node test-motion.cjs
+```
+
+Dieser Test decodiert die echten Clips im Browser, prüft Einmal-Wiedergabe, Pause bei
+Sprache/Unterbrechen, Entsorgung, Mobilbreite, reduzierte Bewegung und fehlende Videos.
+Optional speichert `HOLODECK_SCREENSHOT` eine Ansicht. Er benötigt keine KI-Verbindung.

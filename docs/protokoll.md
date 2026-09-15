@@ -277,6 +277,23 @@ Vorbereitet: Nietzsche, Merz, Trump, Picard sowie fiktive Fachgäste für weiter
 
 ## Holodeck: Wolken-Coach und Avatar-Ausgabe (15.09.2026)
 
+### Erste Clip-Ausgabe (15.09., Folgeauftrag Bewegtbild)
+
+Die Regie liest zusätzlich `holodeck-assets/motion-manifest.json`:
+`{version:1, reception:{video,poster}, john:{video,poster}}`. Pfade unterliegen
+derselben sicheren Asset-Auflösung wie das vorhandene Manifest. Fehlende Datei
+lässt den bisherigen Raum unverändert. Diese erste Implementierung spielt kurze,
+stumme, vorproduzierte Clips, keinen Visem-Renderer. Keine zweite KI-Persona.
+Empfang läuft einmal nach dem Eintritt, mit Überspringen und maximal 6 Sekunden
+Wartezeit. Johns Nahaufnahme läuft einmal beim Öffnen und beim Beginn des Zuhörens;
+sie ist als vorbereitete Mimik gekennzeichnet, keine inhaltliche/emotionale Bewertung.
+Sprechausgabe pausiert den Clip: keine unpassende Mundbewegung als Lippensync ausgeben.
+Clipende hält das letzte Bild, kein abrupter Endlosschleifen-Sprung. Unterbrechen,
+Platzwechsel, Tab-Verbergen und Schließen stoppen die Bewegung. Reduzierte Bewegung
+zeigt nur das Poster. Fehler/Autoplay-Sperre führen zum Poster, ohne Ton/Mikrofon zu ändern.
+Die Nahaufnahme zeigt die vorhandene Kamin-Aufnahme auch im Enterprise-Raum und wird
+als solche benannt; keine falsche Behauptung einer neu gerenderten Enterprise-Aufnahme.
+
 Dieser Abschnitt ergänzt die Rezeption, ersetzt deren Geräte-/Hub-Vertrag aber nicht.
 **Ist:** `compass/holodeck-engine/coach-door.js` adaptiert die bestehende Wolken-API
 `GET /status` und `POST /api/john` auf die lokalen Raumoperationen im Browser.

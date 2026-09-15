@@ -161,3 +161,13 @@ Adapter- und Browserprüfung bestehen lokal; UI-Fixtures benötigen keine privat
 als Vorschlag. Noch kein Renderer und keine neuen Server-Endpunkte implementiert.
 Laut Betriebsübergabe um 11:10 antwortet John seit 10:55 wieder; ein neues persönliches
 Coaching-Gespräch wurde durch diese Tests nicht ausgelöst. Echte Bewegungsclips fehlen.
+
+## Echte Clip-Wiedergabe · 15.09.2026
+
+Vorhandene lokale LTX-Videos vom 12.09. außerhalb des Asset-Ordners wiedergefunden.
+Empfangssequenz nach Eintritt und Johns vorbereitete Kamin-Nahaufnahme mit Gesichts-,
+Kopf- und Handbewegung integriert. Stumme Einmal-Clips; Pause bei TTS/Unterbrechen,
+Poster bei Fehlern oder reduzierter Bewegung. Kein nahtloser Loop, keine Lippensynchronität.
+Medien separat in outputs/holodeck-motion geliefert, bleiben unversioniert. Keine neue
+Video-Erzeugung oder Cloud-Anfrage. Branch astra/holodeck-bewegungsclips zur Prüfung
+durch Claude; nicht durch Astra deployt. Browserprüfung mit echten MP4s bestanden.
