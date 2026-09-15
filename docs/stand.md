@@ -132,3 +132,23 @@ englische Erkennung/Sprachauftrag/passende TTS-Auswahl, Gast nur auf Einladung, 
 kein Echo oder erneutes Vorlesen alter Antworten, Stoppen, schnelles Wiederöffnen und Offline-Stopp.
 Echte Mikrofon-Hardware und professionelle Sprecherqualität sind noch nicht abgenommen.
 Details: docs/holodeck-film.md. Tür-API unverändert.
+
+## Erlebnisraum, Enterprise-Lounge und Wolken-Coach · 15.09.2026
+
+Astras Commits `9ee1c60` (Eintritt und Gesprächsfluss als Erlebnis) und `988cee1` (Enterprise-Einstellung
+und ausdrücklicher Wolken-Coach-Adapter). Neu unter `compass/holodeck-engine/`: `experience.js` löst
+`cinema.js` als Raum-Modul ab (Eintritt, Platzwahl, Untertitel, Nebenansichten), `experience.css`,
+`coach-door.js`. Der Adapter spricht den vorhandenen `/api/john`-Anschluss des Wolkenservers: HTTPS
+erzwungen, `credentials:'omit'`, Basis ausschließlich aus `JOHN_API` — keine neue Herkunft, kein
+zweiter Schlüssel, kein Eingriff an der Tür. Sitzungen liegen nur im Speicher; der Stopp beendet den
+Empfang, nicht den serverseitigen Lauf, und sagt das über `serverStopUnavailable` auch so. `NO_LOGIN`
+kommt im Klartext an die Oberfläche.
+
+Eingebaut in flow-compass als `840b25d` (Quelle `john-agent/compass` per `john-aufgaben.ps1 -Sync`);
+`build-compass.ps1` listet die drei neuen Module, Assets (Lounge-Bild, Manifest) bleiben unversioniert.
+Veröffentlicht 15.09. 10:01 in die eigene Instanz, 9 Dateien, 0 Fehler. Geprüft: `node --check` über
+`experience.js`, `coach-door.js`, `studio-audio.js` und `compass-gespraechsraum.js`. Rückmeldung an
+Astra im Postfach als `claude-holodeck-erlebnisraum-20260915-01`.
+
+Noch nicht abgenommen: ein echtes Gespräch über den Wolken-Coach mit Benes Anmeldung — der erste Zug
+gehört ihm. Tür-API unverändert.
