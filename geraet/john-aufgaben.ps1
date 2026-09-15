@@ -45,7 +45,7 @@ $WachtTask   = 'John Server Wacht'
 $WorkerTask  = 'John Worker'
 $ServerSkript = Join-Path $Compass 'john-server-aufgabe.ps1'
 # Dateien, die hier gepflegt und in den Compass kopiert werden (Lobby 10.09., Gesprächsraum 11.09. von Astra)
-$CompassDateien = @('compass-john-lobby.js', 'compass-gespraechsraum.js', 'holodeck-engine/scenes.js', 'holodeck-engine/production.js', 'holodeck-engine/cinema.js', 'holodeck-engine/cinema.css', 'holodeck-engine/studio-audio.js', 'holodeck-engine/studio-direction.js', 'holodeck-engine/sternenszenen.js')
+$CompassDateien = @('compass-john-lobby.js', 'compass-gespraechsraum.js', 'holodeck-engine/scenes.js', 'holodeck-engine/production.js', 'holodeck-engine/cinema.js', 'holodeck-engine/cinema.css', 'holodeck-engine/studio-audio.js', 'holodeck-engine/studio-direction.js', 'holodeck-engine/sternenszenen.js', 'holodeck-engine/experience.js', 'holodeck-engine/experience.css', 'holodeck-engine/coach-door.js')
 
 function Da([string]$n) { return (Get-ScheduledTask -TaskName $n -ErrorAction SilentlyContinue) }
 function PortAntwortet([int]$p) {
