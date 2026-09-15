@@ -39,7 +39,7 @@ const compass=path.resolve(__dirname,'../../compass');
  await page.evaluate(()=>room.setSpeaker('john'));assert(await v.evaluate(v=>v.paused));
  await page.evaluate(()=>{room.setSpeaker(null);room.setListening(false);room.setListening(true)});
  await page.waitForFunction(()=>!document.querySelector('.holo-john video').paused);
- await page.getByRole('button',{name:'Unterbrechen',exact:true}).click();assert(await v.evaluate(v=>v.paused));
+ await page.getByRole('button',{name:'Unterbrechen · Empfang aus',exact:true}).click();assert(await v.evaluate(v=>v.paused));
  await page.setViewportSize({width:390,height:844});
  assert(await page.locator('.holo-experience').evaluate(n=>n.scrollWidth<=n.clientWidth));
  if(process.env.HOLODECK_SCREENSHOT)await page.screenshot({path:process.env.HOLODECK_SCREENSHOT});

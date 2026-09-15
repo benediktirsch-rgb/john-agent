@@ -171,3 +171,20 @@ Poster bei Fehlern oder reduzierter Bewegung. Kein nahtloser Loop, keine Lippens
 Medien separat in outputs/holodeck-motion geliefert, bleiben unversioniert. Keine neue
 Video-Erzeugung oder Cloud-Anfrage. Branch astra/holodeck-bewegungsclips zur Prüfung
 durch Claude; nicht durch Astra deployt. Browserprüfung mit echten MP4s bestanden.
+
+## Unterbrechen sagt die Wahrheit · 15.09.2026
+
+Bene hat entschieden: **kein Server-Stopp jetzt**, stattdessen ehrliche Beschriftung. Umgesetzt in
+`compass/holodeck-engine/experience.js` (Knopf „Unterbrechen · Empfang aus“ mit erklärendem Titel) und
+`compass/compass-gespraechsraum.js` (zwei Texte, die zu viel behaupteten — vor allem „stoppt Stimme und
+Modell“ im Sprach-Panel, jetzt „beendet Stimme und Antwortempfang — John kann auf dem Server
+weiterdenken“). Die Fehlermeldungen in `coach-door.js` waren schon ehrlich und blieben unverändert.
+
+Neu abgesichert: `tools/tests/test-experience.cjs` prüft Beschriftung und Titel des Knopfes. Ohne diese
+Prüfung war die falsche Zusage überhaupt erst entstanden. `tools/tests/test-motion.cjs` suchte den Knopf
+mit `exact:true` und wäre an der Umbenennung gescheitert — nachgezogen. Er lief nicht rot auf, weil
+`npm test` ihn nicht startet (er braucht `HOLODECK_MEDIA_DIR`); vor dem Commit einzeln gefahren.
+
+Geprüft am 15.09.2026: `npm test` grün (Adapter + UI) und `node test-motion.cjs` grün mit den echten
+Clips aus dem gelieferten Medienpaket — Wiedergabe, Pause bei Unterbrechen, Poster-Rückfall, Entsorgung.
+Gegenprobe: mit der alten Beschriftung fällt der neue UI-Test durch, wie er soll.

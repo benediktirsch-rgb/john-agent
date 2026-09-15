@@ -349,7 +349,21 @@ aktiviert. Fehlende Clips führen zum Poster mit ehrlicher Kennzeichnung. Bei
 reduzierter Bewegung bleibt die Darstellung statisch; Stimme und Untertitel funktionieren.
 Ein Raumloop ist Kulisse und ersetzt keine individuelle Gesichtsanimation.
 
-### Server-Stopp v1 — Vorschlag für Claude, nicht implementiert
+### Server-Stopp v1 — zurückgestellt (Bene, 15.09.2026)
+
+**Entscheidung:** nicht bauen, bis das Holodeck sich im Alltag bewährt hat. Stattdessen sagt die
+Oberfläche, was sie wirklich tut: der Knopf heißt „Unterbrechen · Empfang aus“ und trägt als Titel
+„Beendet Stimme und Antwortempfang. John kann auf dem Server weiterdenken; ein bestätigter
+Modellstopp ist hier noch nicht eingebaut.“ Der UI-Test hält diese Zusage fest
+(`tools/tests/test-experience.cjs`), damit sie beim nächsten Umbau nicht wieder zu
+„stoppt Stimme und Modell“ wird — genau so war die falsche Zusage entstanden.
+
+Grund für das Zurückstellen: die Umsetzung fässt den laufenden Dienst an, an dem auch die
+Team-Instanzen hängen, und beendet Prozessbäume. Dafür gibt es bisher keine Last — im Holodeck
+wurde noch kein echtes Gespräch geführt. Der Vertrag unten bleibt gültig und ist der Bauplan,
+sobald die Entscheidung kippt. Bis dahin: `capabilities.holodeckJobs` aus, `/api/john` unverändert.
+
+Der ursprüngliche Vorschlag (Astra, 15.09.2026):
 
 Ziel: HTTP-Auslieferung und Modellarbeit trennen. Ein kurzer HTTP-Aufruf legt einen
 Auftrag an; ein begrenzter Worker führt ihn aus. Status und Stopp bleiben währenddessen

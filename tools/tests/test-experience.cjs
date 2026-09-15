@@ -34,6 +34,9 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  await page.waitForFunction(()=>document.querySelector('.holo-subtitle').textContent.includes('Was beschäftigt'));
  assert.equal(posts.length,1,'One click sends one briefing');
  assert(!posts[0].text.includes('Git-Stand'),'No stale project context');
+ const interrupt=page.getByRole('button',{name:'Unterbrechen · Empfang aus',exact:true});
+ await interrupt.waitFor();
+ assert((await interrupt.getAttribute('title')||'').includes('weiterdenken'),'Interrupt must not promise a server-side model stop');
  await page.getByRole('button',{name:'Sprechen',exact:true}).click();
  assert(await page.locator('.jgr-voice').isVisible());
  assert.equal(await page.locator('.jgr-voice input[type=checkbox]').first().isChecked(),false,'No implied mic consent');
@@ -68,6 +71,6 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  await page.getByRole('button',{name:'Raum verlassen',exact:true}).click();
  assert.equal(await page.locator('dialog').evaluate(d=>d.open),false);
  assert.deepEqual(errors,[]);
- console.log('PASS: entry, all seats, no auto-send, briefing, mic consent, offline reflection, recovery, draft, mobile, goodbye; no page errors.');
+ console.log('PASS: entry, all seats, no auto-send, briefing, honest interrupt label, mic consent, offline reflection, recovery, draft, mobile, goodbye; no page errors.');
  } finally { await browser.close(); }
 })().catch(e=>{console.error(e);process.exitCode=1});
