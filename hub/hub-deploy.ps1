@@ -30,6 +30,10 @@
     hub-deploy.ps1 -NurGeraete     den alten ungebundenen Schluessel (hash) weglassen — wenn jedes Geraet seinen hat
     hub-deploy.ps1 -BeraterErzeugen madelene   Schluessel fuer EINE Beraterin neu wuerfeln (der alte gilt danach nicht mehr)
     hub-deploy.ps1 -BeraterKopieren madelene   nichts hochladen, nur ihren Schluessel in die Zwischenablage legen
+                                               (ohne Verlauf und Cloud-Sync; nach Enter wird sie geleert)
+    hub-deploy.ps1 -BeraterWiderrufen madelene Schluessel der Beraterin entfernen und hochladen — sie kommt nicht mehr
+                                               hinein, Geraete und Browser laufen weiter. Neu: -BeraterErzeugen madelene
+    -OhneWarten                                nach dem Kopieren nicht auf Enter warten (fuer Aufrufe ohne Terminal)
     hub-deploy.ps1 -NurPruefen     nichts hochladen, nur die Live-Adresse abfragen
     hub-deploy.ps1 -Ziel '/hotel-vaikuntha.de'   eigenes Dokumentenverzeichnis (später)
 #>
@@ -41,6 +45,8 @@ param(
   [switch]$NurGeraete,
   [string]$BeraterErzeugen = '',
   [string]$BeraterKopieren = '',
+  [string]$BeraterWiderrufen = '',
+  [switch]$OhneWarten,
   [switch]$NurPruefen
 )
 $ErrorActionPreference = 'Stop'
@@ -133,16 +139,50 @@ foreach ($g in $geraeteListe) {
 # Rueckfragen). Ihr Schluessel wird nie ausgegeben — er gehoert in IHRE Umgebung, nicht in ein Log oder
 # einen Chat. Deshalb nur in die Zwischenablage, und nur auf ausdrueckliche Bitte.
 function BeraterVar([string]$b) { return 'JOHN_HUB_TOKEN_BERATER_' + (($b.ToUpperInvariant()) -replace '[^A-Z0-9]','_') }
+# Ein Geheimnis in die Zwischenablage — aber nicht in den Windows-Verlauf (Win+V) und nicht in die Cloud-Zwischenablage.
+# Die drei Formate sind die dokumentierten Ausschluss-Kennzeichen von Windows; ohne sie haelt der Verlauf den Schluessel.
+$script:GeheimKopiert = $false
+function Kopiere-Geheim([string]$t) {
+  try {
+    Add-Type -AssemblyName System.Windows.Forms
+    $d = New-Object System.Windows.Forms.DataObject
+    $d.SetData([System.Windows.Forms.DataFormats]::UnicodeText, $t)
+    foreach ($f in 'ExcludeClipboardContentFromMonitorProcessing', 'CanIncludeInClipboardHistory', 'CanUploadToCloudClipboard') {
+      $d.SetData($f, (New-Object IO.MemoryStream(,[byte[]](0,0,0,0))))
+    }
+    [System.Windows.Forms.Clipboard]::SetDataObject($d, $true)
+    $script:GeheimKopiert = $true
+    return 'liegt in der Zwischenablage (ohne Verlauf und Cloud-Sync)'
+  } catch {
+    return "konnte nicht kopiert werden ($($_.Exception.Message)) — spaeter: hub-deploy.ps1 -BeraterKopieren <name>"
+  }
+}
+function Leere-Zwischenablage {
+  if (-not $script:GeheimKopiert) { return }
+  if ($OhneWarten) { Sag 'Zwischenablage bitte nach dem Einfuegen leeren (oder etwas anderes kopieren).' 'Yellow'; return }
+  try { [void](Read-Host 'Schluessel eingefuegt? Enter leert die Zwischenablage') } catch { }
+  try { [System.Windows.Forms.Clipboard]::Clear(); Sag 'Zwischenablage geleert.' 'Green' } catch { }
+}
 if ($BeraterKopieren) {
   $t = LiesEnv (BeraterVar $BeraterKopieren.ToLowerInvariant())
   if (-not $t) { Sag "Kein Schluessel fuer Beraterin '$BeraterKopieren' — erst hub-deploy.ps1 -BeraterErzeugen $BeraterKopieren" 'Red'; return }
-  Set-Clipboard -Value $t
-  Sag "Schluessel der Beraterin '$BeraterKopieren' liegt in der Zwischenablage ($($t.Length) Zeichen). In ihrer Umgebung als JOHN_HUB_TOKEN eintragen." 'Green'
+  $wo = Kopiere-Geheim $t
+  Sag "Schluessel der Beraterin '$BeraterKopieren' $wo ($($t.Length) Zeichen). In ihrer Umgebung als JOHN_HUB_TOKEN eintragen." 'Green'
+  Leere-Zwischenablage
   return
 }
 $beraterListe = @()
 $beraterRoh = LiesEnv 'JOHN_HUB_BERATER'
 if ($beraterRoh) { $beraterListe = @($beraterRoh -split ',' | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ }) }
+# Widerruf (16.09.2026): Name aus der Liste, Schluessel aus der Umgebung — token.php wird unten ohne ihn geschrieben.
+if ($BeraterWiderrufen) {
+  $w = $BeraterWiderrufen.ToLowerInvariant()
+  $beraterListe = @($beraterListe | Where-Object { $_ -ne $w })
+  [Environment]::SetEnvironmentVariable('JOHN_HUB_BERATER', $(if ($beraterListe.Count) { $beraterListe -join ',' } else { $null }), 'User')
+  [Environment]::SetEnvironmentVariable((BeraterVar $w), $null, 'User')
+  Remove-Item -Path ("Env:" + (BeraterVar $w)) -ErrorAction SilentlyContinue
+  Sag "Beraterin '$w' widerrufen: Schluessel geloescht, token.php wird ohne sie hochgeladen." 'Yellow'
+}
 if ($BeraterErzeugen -and ($beraterListe -notcontains $BeraterErzeugen.ToLowerInvariant())) {
   $beraterListe += $BeraterErzeugen.ToLowerInvariant()
   [Environment]::SetEnvironmentVariable('JOHN_HUB_BERATER', ($beraterListe -join ','), 'User')
@@ -156,7 +196,7 @@ foreach ($b in $beraterListe) {
     $t = NeuerSchluessel
     [Environment]::SetEnvironmentVariable($var, $t, 'User')
     Set-Item -Path ("Env:" + $var) -Value $t
-    try { Set-Clipboard -Value $t; $wo = 'liegt in der Zwischenablage' } catch { $wo = "spaeter: hub-deploy.ps1 -BeraterKopieren $b" }
+    $wo = Kopiere-Geheim $t
     Sag "Schluessel fuer Beraterin '$b' erzeugt ($var) — $wo. In ihrer Umgebung als JOHN_HUB_TOKEN eintragen." 'Green'
   }
   $beraterHashes[$b] = Hash256 $t
@@ -263,7 +303,9 @@ if ($ok) {
     [Environment]::SetEnvironmentVariable('JOHN_HUB_URL', $Adresse, 'User')
     Sag "  (als Benutzer-Umgebungsvariable gesetzt — Worker beim nächsten Start neu einlesen lassen)" 'DarkGray'
   }
+  Leere-Zwischenablage
 } else {
+  Leere-Zwischenablage
   Sag 'Wenn die Adresse 404 sagt: zeigt die Domain im KAS wirklich auf dieses Verzeichnis?' 'Yellow'
   Sag 'Wenn sie 500 sagt: PHP-Version im KAS prüfen (8.0+) und Schreibrechte auf daten/.' 'Yellow'
   Sag 'docs\kas-schritte.md hat die Reihenfolge.' 'Yellow'

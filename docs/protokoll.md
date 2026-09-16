@@ -26,7 +26,7 @@ gitignoriert, erzeugt von `hub-deploy.ps1`):
 | **Gerät** (`hash`) | `JOHN_HUB_TOKEN` | Benutzerumgebung jedes Geräts | alles |
 | **Gerät, gebunden** (`geraete[name]`) | `JOHN_HUB_TOKEN_<NAME>` auf dem Rechner, als `JOHN_HUB_TOKEN` in der Umgebung des Geräts | je Gerät eines | alles, aber nur unter seinem Namen |
 | **Browser** (`hash_browser`) | `JOHN_HUB_TOKEN_BROWSER` | eingesetzt im gebauten eigenen Compass | `stand`, `punkt`, `auftrag`, `stapelstand`, `stopp`, `rueckfragen`, `rueckfrage-antwort` |
-| **Beraterin** (`berater[name]`, seit 16.09.2026) | `JOHN_HUB_TOKEN_BERATER_<NAME>` auf Benes Rechner, in der Umgebung der Beraterin als `JOHN_HUB_TOKEN` | je Beraterin einer (heute: `madelene`) | `stand` (verkürzt: `wach`, `takt`, Gerätenamen, Zähler — ohne Stapel, Compass-Spiegel, Räume, Logbuch; `sicht: "beraterin"`), `rueckfragen`, `rueckfrage`, `log` — nur unter ihrem Namen |
+| **Beraterin** (`berater[name]`, seit 16.09.2026) | `JOHN_HUB_TOKEN_BERATER_<NAME>` auf Benes Rechner, in der Umgebung der Beraterin als `JOHN_HUB_TOKEN` | je Beraterin einer (heute: `madelene`) | `stand` (verkürzt: `wach`, `takt`, Gerätenamen, nur **ihre** offenen Rückfragen — ohne Stapel, Compass-Spiegel, Räume, Logbuch; `sicht: "beraterin"`), `rueckfragen` (**nur ihre eigenen**), `rueckfrage`, `log` — nur unter ihrem Namen. Einzeln widerrufbar: `hub-deploy.ps1 -BeraterWiderrufen <name>` |
 
 Warum zwei (Madeleines Einwand, `beratung/protokoll.md`): ein Schlüssel im Browser ist ein Schlüssel,
 der verloren gehen kann. Mit dem Browser-Schlüssel lässt sich Johns Stapel weder überschreiben noch
@@ -240,14 +240,15 @@ Antwort — keine Zahlen, keine Personendaten (ADR 0002). Wer fragt, hält sich 
 
 ```json
 { "id": "madelene-compass-checkins-20260916", "von": "madelene", "projekt": "Madelene · flow-compass",
-  "frage": "…?", "warum": "…", "optionen": ["…", "…", "…"], "wann": "2026-09-16", "link": null,
+  "frage": "…?", "warum": "…", "optionen": ["…", "…", "…"], "wann": "2026-09-16", "link": null, "dringend": false,
   "erstellt": "2026-09-16T10:02:11+02:00", "geaendert": "2026-09-16T10:02:11+02:00",
   "status": "offen", "antwort": null }
 ```
 
 - `id`: `[a-z0-9][a-z0-9-]{2,59}`; eine Beraterin beginnt sie mit ihrem Namen (`madelene-…`), sonst **400**.
 - Grenzen: `frage` ≤ 500 Zeichen, `warum` ≤ 2000, `projekt` ≤ 120, bis zu 4 `optionen` à 160, `link` nur `http(s)`.
-  `wann` (`JJJJ-MM-TT`) sagt, ab wann sie erscheint; leer = heute.
+  `wann` (`JJJJ-MM-TT`) sagt, ab wann sie erscheint; leer = heute. `dringend` (bool) stellt sie im Compass nach vorn;
+  eine Beraterin darf **höchstens eine** dringende offene Rückfrage haben (**409**).
 - `status`: `offen` → `beantwortet` (Bene) oder `zurueckgezogen` (der Fragende). Beantwortetes und Zurückgezogenes
   bleibt 30 Tage lesbar, dann räumt die Rezeption es weg.
 - Höchstens **5 offene je Beraterin** und 60 insgesamt — mehr wäre kein Fragen, sondern eine Halde (**409**).
@@ -256,13 +257,22 @@ Antwort — keine Zahlen, keine Personendaten (ADR 0002). Wer fragt, hält sich 
 
 | Aufruf | wer | Antwort |
 |---|---|---|
-| `GET w=rueckfragen[&status=offen\|beantwortet\|zurueckgezogen\|alle][&von=<name>][&seit=<iso>]` | Gerät, Browser, Beraterin | `{ok, jetzt, rueckfragen:[…]}` — jüngste Änderung zuerst, höchstens 100. Standard `status=offen`; `seit` liefert nur, was danach geändert wurde |
+| `GET w=rueckfragen[&status=offen\|beantwortet\|zurueckgezogen\|alle][&von=<name>][&seit=<iso>]` | Gerät, Browser, Beraterin | `{ok, jetzt, rueckfragen:[…]}` — jüngste Änderung zuerst, höchstens 100. Standard `status=offen`; `seit` liefert nur, was danach geändert wurde. **Eine Beraterin sieht nur ihre eigenen** (`von` wird erzwungen, ein fremdes `von` → **403**) |
 | `POST w=rueckfrage {id, projekt, frage, warum, optionen, wann?, link?, von?}` | Gerät, Beraterin | anlegen oder die eigene ändern: `{ok, id, status, offen}`. Beraterin: `von` ist ihr gebundener Name, `von` im Körper wird ignoriert. Gerät: `von` Standard `claude`. Gleiche `id` desselben `von` → aktualisiert; fremde `id` → **403**; schon beantwortet → **409** (neue id nehmen) |
 | `POST w=rueckfrage {id, zurueckziehen: true}` | Gerät, Beraterin | nur die eigene: `status=zurueckgezogen`. Unbekannt **404**, beantwortet **409** |
 | `POST w=rueckfrage-antwort {id, a, ts?, wer?}` | Gerät, Browser | `a` Pflicht (≤ 200), `ts` Datum (Standard heute, Berlin), `wer` `compass\|checkin\|claude\|geraet`. Setzt `status=beantwortet`, `antwort={a, ts, wer, zeit}`; eine spätere Antwort überschreibt (wie `Add-Antwort -direkt` im Compass-Server). Unbekannt **404**, zurückgezogen **409** |
 
-`GET w=stand` liefert zusätzlich `rueckfragen: {offen, von: {<name>: <n>}}`. Ins Logbuch geht nur `id` und
-`von`, nie Frage oder Antwort.
+`GET w=stand` liefert zusätzlich `rueckfragen: {offen, von: {<name>: <n>}}` (für eine Beraterin nur ihre eigene
+Zahl). Ins Logbuch geht nur `id` und `von`, nie Frage oder Antwort.
+
+**Wiederholen ist sicher (idempotent).** Die Kennung vergibt, wer fragt — die Rezeption erzeugt keine. Geht die
+Antwort auf `w=rueckfrage` verloren, wird derselbe Körper mit derselben `id` noch einmal gesendet: gleiche Felder →
+`{ok, unveraendert: true}` ohne Schreibung und ohne neues `geaendert`; geänderte Felder → Aktualisierung; inzwischen
+beantwortet → **409** (für den Client: angekommen, nicht neu stellen). Beim Wiederholen nie eine neue `id` erzeugen.
+Dasselbe gilt für `w=rueckfrage-antwort` (gleiche Antwort → `unveraendert`). Parallele Aufrufe mit derselben `id`
+ergeben einen Eintrag, weil jede Schreibung unter derselben Sperre liest und prüft.
+
+**Eine fremde Kennung** meldet einer Beraterin nur „id vergeben“ (**409**), ohne zu verraten, wem sie gehört.
 
 **Wer liest was**
 

@@ -385,6 +385,11 @@ function jh_rf_offen(array $s, ?string $von = null): int {
     }
     return $n;
 }
+function jh_rf_dringend(array $s, string $von): int {
+    $n = 0;
+    foreach ($s['rueckfragen'] as $q) { if ((string)($q['status'] ?? '') === 'offen' && (string)($q['von'] ?? '') === $von && !empty($q['dringend'])) $n++; }
+    return $n;
+}
 function jh_rf_finde(array $s, string $id): ?int {
     foreach ($s['rueckfragen'] as $i => $q) { if ((string)($q['id'] ?? '') === $id) return $i; }
     return null;
@@ -491,7 +496,7 @@ case 'stand':
     if ($jh_klasse === 'berater') {
         $st = ['ok' => true, 'jetzt' => $st['jetzt'], 'wach' => $st['wach'], 'takt' => $st['takt'],
                'geraete' => array_map(fn($g) => ['name' => $g['name'], 'wach' => $g['wach'], 'alter_s' => $g['alter_s']], $st['geraete']),
-               'auftraege' => $st['auftraege'], 'rueckfragen' => $st['rueckfragen'], 'sicht' => 'beraterin'];
+               'rueckfragen' => ['offen' => (int)($st['rueckfragen']['von']->{$jh_geraet} ?? 0)], 'sicht' => 'beraterin'];
     }
     jh_ende($st);
 
@@ -736,6 +741,12 @@ case 'rueckfragen':
     $status = jh_text($_GET['status'] ?? 'offen', 20);
     if (!in_array($status, ['offen', 'beantwortet', 'zurueckgezogen', 'alle'], true)) jh_fehler('status: offen, beantwortet, zurueckgezogen oder alle', 400);
     $von  = jh_text($_GET['von'] ?? '', 40);
+    /* Beraterin (16.09.2026, Bene: „ausschliesslich ihre eigenen Fragen und die zugehoerigen Antworten"):
+       sie liest nur, was sie selbst gefragt hat — Claudes Fragen und Benes Antworten darauf nie. */
+    if ($jh_klasse === 'berater') {
+        if ($von !== '' && $von !== $jh_geraet) jh_fehler('eine Beraterin liest nur ihre eigenen Rueckfragen', 403);
+        $von = (string)$jh_geraet;
+    }
     $seit = jh_text($_GET['seit'] ?? '', 40);
     $liste = [];
     foreach (jh_lesen()['rueckfragen'] as $q) {
@@ -768,12 +779,15 @@ case 'rueckfrage':
             'frage' => $frage, 'warum' => jh_text($koerper['warum'] ?? '', 2000),
             'optionen' => $optionen, 'wann' => jh_rf_datum($koerper['wann'] ?? ''),
             'link' => preg_match('~^https?://~', $link) ? $link : null,
+            'dringend' => (bool)($koerper['dringend'] ?? false),
         ];
     }
     $antwortR = jh_schreiben(function (array $s) use ($id, $von, $zurueck, $felder, $jh_klasse) {
         $i = jh_rf_finde($s, $id);
         if ($i !== null && (string)($s['rueckfragen'][$i]['von'] ?? '') !== $von) {
-            return [$s, ['ok' => false, 'fehler' => 'diese Rueckfrage gehoert ' . (string)$s['rueckfragen'][$i]['von'], 'code' => 403]];
+            return $jh_klasse === 'berater'
+                ? [$s, ['ok' => false, 'fehler' => 'id vergeben — bitte eine andere nehmen', 'code' => 409]]
+                : [$s, ['ok' => false, 'fehler' => 'diese Rueckfrage gehoert ' . (string)$s['rueckfragen'][$i]['von'], 'code' => 403]];
         }
         if ($zurueck) {
             if ($i === null) return [$s, ['ok' => false, 'fehler' => 'Rueckfrage nicht gefunden', 'code' => 404]];
@@ -787,11 +801,19 @@ case 'rueckfrage':
         if ($i !== null) {
             $st = (string)($s['rueckfragen'][$i]['status'] ?? '');
             if ($st === 'beantwortet') return [$s, ['ok' => false, 'fehler' => 'schon beantwortet — neue id nehmen', 'code' => 409]];
+            $gleich = ($st === 'offen');
+            foreach ($felder as $k => $v) { if (($s['rueckfragen'][$i][$k] ?? null) !== $v) { $gleich = false; break; } }
+            // Wiederholung nach Verbindungsfehler: nichts schreiben, nichts verschieben (docs/protokoll.md › idempotent).
+            if ($gleich) return [$s, ['ok' => true, 'id' => $id, 'status' => 'offen', 'unveraendert' => true, 'offen' => jh_rf_offen($s, $von)]];
+            if ($jh_klasse === 'berater' && $felder['dringend'] && empty($s['rueckfragen'][$i]['dringend']) && jh_rf_dringend($s, $von) >= 1) {
+                return [$s, ['ok' => false, 'fehler' => 'schon eine dringende offene Rueckfrage', 'code' => 409]];
+            }
             $s['rueckfragen'][$i] = array_merge($s['rueckfragen'][$i], $felder, ['status' => 'offen', 'geaendert' => jh_jetzt()]);
             $s = jh_logzeile($s, 'rueckfrage', "geaendert: $id ($von)");
             return [$s, ['ok' => true, 'id' => $id, 'status' => 'offen', 'offen' => jh_rf_offen($s, $von)]];
         }
         if ($jh_klasse === 'berater' && jh_rf_offen($s, $von) >= JH_RF_JE_VON) return [$s, ['ok' => false, 'fehler' => 'schon ' . JH_RF_JE_VON . ' offene Rueckfragen von ' . $von, 'code' => 409]];
+        if ($jh_klasse === 'berater' && $felder['dringend'] && jh_rf_dringend($s, $von) >= 1) return [$s, ['ok' => false, 'fehler' => 'schon eine dringende offene Rueckfrage', 'code' => 409]];
         if (jh_rf_offen($s) >= JH_RF_MAX) return [$s, ['ok' => false, 'fehler' => 'zu viele offene Rueckfragen', 'code' => 409]];
         $s['rueckfragen'][] = ['id' => $id, 'von' => $von] + $felder + [
             'erstellt' => jh_jetzt(), 'geaendert' => jh_jetzt(), 'status' => 'offen', 'antwort' => null,

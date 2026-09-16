@@ -70,6 +70,21 @@ function LobbySync {
     [IO.File]::WriteAllText($ziel, $neu, (New-Object Text.UTF8Encoding($false)))
     Write-Host "$datei kopiert -> $ziel  ($($neu.Length) Zeichen)" -ForegroundColor Green; $kopiert = $true
   }
+  # Rezeption fuer den lokalen Compass (16.09.2026): localhost:8787 liefert dashboard.html ohne Build aus und kennt
+  # deshalb weder Adresse noch Browser-Schluessel — Madelenes Rueckfragen fehlten dort. compass-fragen-rezeption.js
+  # laedt auf localhost diese Datei nach. Sie ist gitignoriert und traegt nur den eingeschraenkten Browser-Schluessel
+  # (derselbe, den build-compass.ps1 in die eigene Instanz setzt), nie einen Geraete- oder Beraterinnen-Schluessel.
+  $hubUrl = [Environment]::GetEnvironmentVariable('JOHN_HUB_URL', 'User')
+  $hubTok = [Environment]::GetEnvironmentVariable('JOHN_HUB_TOKEN_BROWSER', 'User')
+  $lokal = Join-Path $Compass 'rezeption-lokal.js'
+  if ($hubUrl -and $hubTok) {
+    $inhalt = "/* rezeption-lokal.js — erzeugt von john-agent\geraet\john-aufgaben.ps1 -Sync. Gitignoriert, nie committen. */`n" +
+              "window.JOHN_HUB = window.JOHN_HUB || '" + $hubUrl.Trim().TrimEnd('/') + "';`n" +
+              "window.JOHN_HUB_TOKEN = window.JOHN_HUB_TOKEN || '" + $hubTok.Trim() + "';`n"
+    $alt = if (Test-Path $lokal) { [IO.File]::ReadAllText($lokal, [Text.Encoding]::UTF8) } else { '' }
+    if ($alt -ne $inhalt) { [IO.File]::WriteAllText($lokal, $inhalt, (New-Object Text.UTF8Encoding($false))); Write-Host 'rezeption-lokal.js geschrieben (lokaler Compass kennt die Rezeption)' -ForegroundColor Green }
+    else { Write-Host 'rezeption-lokal.js: unveraendert' }
+  } else { Write-Host 'rezeption-lokal.js nicht geschrieben: JOHN_HUB_URL oder JOHN_HUB_TOKEN_BROWSER fehlt' -ForegroundColor Yellow }
   if ($kopiert) { Write-Host "  Danach: build-compass.ps1 (oder die Aufgabe 'Vishnu Flow Compass publish' abwarten)." }
   return $ok
 }
