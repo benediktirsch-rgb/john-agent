@@ -212,3 +212,16 @@ mit `exact:true` und wäre an der Umbenennung gescheitert — nachgezogen. Er li
 Geprüft am 15.09.2026: `npm test` grün (Adapter + UI) und `node test-motion.cjs` grün mit den echten
 Clips aus dem gelieferten Medienpaket — Wiedergabe, Pause bei Unterbrechen, Poster-Rückfall, Entsorgung.
 Gegenprobe: mit der alten Beschriftung fällt der neue UI-Test durch, wie er soll.
+
+## Drei Enterprise-Sets live · 16.09.2026
+
+Astras Standbilder `enterprise-bruecke`, `enterprise-aussicht` und `enterprise-maschinenraum` (je 1672×941,
+Lieferung in `C:/dev/übergaben/2026-09-16-holodeck-sets/` samt BILDNACHWEISE.json) sind mit
+`persoenliches-dashboard/tools/holodeck-clip-einbauen.ps1` in beide Asset-Ordner eingebaut; das Manifest trägt
+sie unter `plaetze` (`bruecke`, `aussicht`, `maschinenraum`, je mit gleichnamiger Klangpalette). Assets und
+Manifest bleiben unversioniert; am Code hat sich nichts geändert.
+
+Veröffentlicht am 16.09. um 21:15 auf bene. (7 Dateien, 0 Fehler). Angemeldet im Browser geprüft: Die Platzwahl zeigt
+sieben Plätze, jeder neue Platz lädt sein Bild, Johns Kamin-Clip läuft weiter, der Raumklang lässt sich einschalten.
+Eine Hörprobe steht noch aus. Offen für Bene: Das Empfangsbild `cinema-welcome` zeigt eine Schauspieler-Ähnlichkeit in
+Sternenflotten-Uniform und widerspricht damit der Set-Regel aus `holodeck-calliope.md` §8.
