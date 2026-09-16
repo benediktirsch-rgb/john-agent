@@ -25,7 +25,8 @@ gitignoriert, erzeugt von `hub-deploy.ps1`):
 |---|---|---|---|
 | **Gerät** (`hash`) | `JOHN_HUB_TOKEN` | Benutzerumgebung jedes Geräts | alles |
 | **Gerät, gebunden** (`geraete[name]`) | `JOHN_HUB_TOKEN_<NAME>` auf dem Rechner, als `JOHN_HUB_TOKEN` in der Umgebung des Geräts | je Gerät eines | alles, aber nur unter seinem Namen |
-| **Browser** (`hash_browser`) | `JOHN_HUB_TOKEN_BROWSER` | eingesetzt im gebauten eigenen Compass | `stand`, `punkt`, `auftrag`, `stapelstand` |
+| **Browser** (`hash_browser`) | `JOHN_HUB_TOKEN_BROWSER` | eingesetzt im gebauten eigenen Compass | `stand`, `punkt`, `auftrag`, `stapelstand`, `stopp`, `rueckfragen`, `rueckfrage-antwort` |
+| **Beraterin** (`berater[name]`, seit 16.09.2026) | `JOHN_HUB_TOKEN_BERATER_<NAME>` auf Benes Rechner, in der Umgebung der Beraterin als `JOHN_HUB_TOKEN` | je Beraterin einer (heute: `madelene`) | `stand` (verkürzt: `wach`, `takt`, Gerätenamen, Zähler — ohne Stapel, Compass-Spiegel, Räume, Logbuch; `sicht: "beraterin"`), `rueckfragen`, `rueckfrage`, `log` — nur unter ihrem Namen |
 
 Warum zwei (Madeleines Einwand, `beratung/protokoll.md`): ein Schlüssel im Browser ist ein Schlüssel,
 der verloren gehen kann. Mit dem Browser-Schlüssel lässt sich Johns Stapel weder überschreiben noch
@@ -223,6 +224,60 @@ das Gerät den Stapel in die Rezeption, und jedes Gerät liest ihn dort, wenn es
 Kachel sagt am Handy „am Rechner", statt einen leeren Entwurf zu öffnen. Titel und Satz eines
 Punkts gehen mit (Satz auf 500 Zeichen gekürzt) — das ist die Grenze aus ADR 0002: das Thema ja,
 der Inhalt nein.
+### Rückfragen an der Rezeption: `w=rueckfragen`, `w=rueckfrage`, `w=rueckfrage-antwort` (seit 16.09.2026)
+
+Bene, 16.09.2026: „Ich will Madelene gleichberechtigten Zugriff auf meinen Compass geben und auch alle
+Rückfragen von ihr dort sehen."
+
+Bis hierher lebten Rückfragen an Bene nur in `rhythmus-data.js › rueckfragen` auf seinem Rechner. Schreiben
+konnte sie nur, wer dort eine Datei anfasst — Claude. Madelene (Astra, Codex in ChatGPT Work) hat GitHub und
+ihre eigene Linux-Umgebung, sonst nichts. Deshalb hält die Rezeption jetzt **Rückfragen**: wer fragt, legt sie
+hier ab; der Compass zeigt sie im Banner „Fragen an dich" und im Ritual, auf jedem Gerät; die Antwort kommt
+hierher zurück, und wer gefragt hat, liest sie hier ab. Die Rezeption bleibt dumm: sie hält Frage, Optionen und
+Antwort — keine Zahlen, keine Personendaten (ADR 0002). Wer fragt, hält sich daran.
+
+**Form** — dieselbe wie im Compass, plus Herkunft und Stand:
+
+```json
+{ "id": "madelene-compass-checkins-20260916", "von": "madelene", "projekt": "Madelene · flow-compass",
+  "frage": "…?", "warum": "…", "optionen": ["…", "…", "…"], "wann": "2026-09-16", "link": null,
+  "erstellt": "2026-09-16T10:02:11+02:00", "geaendert": "2026-09-16T10:02:11+02:00",
+  "status": "offen", "antwort": null }
+```
+
+- `id`: `[a-z0-9][a-z0-9-]{2,59}`; eine Beraterin beginnt sie mit ihrem Namen (`madelene-…`), sonst **400**.
+- Grenzen: `frage` ≤ 500 Zeichen, `warum` ≤ 2000, `projekt` ≤ 120, bis zu 4 `optionen` à 160, `link` nur `http(s)`.
+  `wann` (`JJJJ-MM-TT`) sagt, ab wann sie erscheint; leer = heute.
+- `status`: `offen` → `beantwortet` (Bene) oder `zurueckgezogen` (der Fragende). Beantwortetes und Zurückgezogenes
+  bleibt 30 Tage lesbar, dann räumt die Rezeption es weg.
+- Höchstens **5 offene je Beraterin** und 60 insgesamt — mehr wäre kein Fragen, sondern eine Halde (**409**).
+
+**Endpunkte**
+
+| Aufruf | wer | Antwort |
+|---|---|---|
+| `GET w=rueckfragen[&status=offen\|beantwortet\|zurueckgezogen\|alle][&von=<name>][&seit=<iso>]` | Gerät, Browser, Beraterin | `{ok, jetzt, rueckfragen:[…]}` — jüngste Änderung zuerst, höchstens 100. Standard `status=offen`; `seit` liefert nur, was danach geändert wurde |
+| `POST w=rueckfrage {id, projekt, frage, warum, optionen, wann?, link?, von?}` | Gerät, Beraterin | anlegen oder die eigene ändern: `{ok, id, status, offen}`. Beraterin: `von` ist ihr gebundener Name, `von` im Körper wird ignoriert. Gerät: `von` Standard `claude`. Gleiche `id` desselben `von` → aktualisiert; fremde `id` → **403**; schon beantwortet → **409** (neue id nehmen) |
+| `POST w=rueckfrage {id, zurueckziehen: true}` | Gerät, Beraterin | nur die eigene: `status=zurueckgezogen`. Unbekannt **404**, beantwortet **409** |
+| `POST w=rueckfrage-antwort {id, a, ts?, wer?}` | Gerät, Browser | `a` Pflicht (≤ 200), `ts` Datum (Standard heute, Berlin), `wer` `compass\|checkin\|claude\|geraet`. Setzt `status=beantwortet`, `antwort={a, ts, wer, zeit}`; eine spätere Antwort überschreibt (wie `Add-Antwort -direkt` im Compass-Server). Unbekannt **404**, zurückgezogen **409** |
+
+`GET w=stand` liefert zusätzlich `rueckfragen: {offen, von: {<name>: <n>}}`. Ins Logbuch geht nur `id` und
+`von`, nie Frage oder Antwort.
+
+**Wer liest was**
+
+- **Compass** (Browser-Schlüssel, `compass-fragen-rezeption.js`): holt die offenen, hängt sie an `offeneFragen()`
+  (Kennung bleibt die `id`; steht dieselbe `id` schon in `rhythmus-data.js`, gewinnt die Datei), schreibt jede
+  Antwort zusätzlich per `w=rueckfrage-antwort` hierher. Ohne `JOHN_HUB`/`JOHN_HUB_TOKEN` (Demo, Kundeninstanz)
+  tut die Datei nichts.
+- **Claude** (Geräte-Schlüssel): liest hier, was Madelene gefragt und Bene geantwortet hat (Astra-Postfach).
+  Claudes eigene Rückfragen bleiben vorerst in `rhythmus-data.js` und werden **nicht** hierher gespiegelt: ihre
+  Begründungen tragen Namen und Beträge, und die Rezeption hält keine Inhalte (Regel 3). Ob und in welchem
+  Umfang gespiegelt wird (nur Frage und Antwort, oder alles), ist Benes Rückfrage `madelene-sieht-claudes-fragen`.
+  Die Schnittstelle trägt es schon: ein Gerät legt Fragen mit `von=claude` an.
+- **Madelene** (Beraterinnen-Schlüssel): legt Rückfragen an, liest Antworten, zieht zurück. Sie ist kein Gerät:
+  kein `puls`, kein `nimm`, kein `ergebnis`, kein `stapel`.
+
 ### Briefkasten `daten/eingang.jsonl` — Buchungen von der Vishnu-Seite (seit 11.09.2026)
 
 Die Seite „Projekt John" (`vishnuartists.com/projekt-john.php`) liegt **auf demselben Webspace** wie

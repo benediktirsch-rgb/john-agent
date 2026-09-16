@@ -20,12 +20,16 @@
     JOHN_HUB_TOKEN                            Johns alter, ungebundener Geraete-Schluessel; -TokenErzeugen legt einen an
     JOHN_HUB_GERAETE                          Geraetenamen, Komma-getrennt (z. B. vishnu-master,wolke) — ein Schluessel je Geraet
     JOHN_HUB_TOKEN_<NAME>                     der Schluessel des Geraets NAME (Grossbuchstaben, - wird _); fehlt er, wird er erzeugt
+    JOHN_HUB_BERATER                          Beraterinnen, Komma-getrennt (z. B. madelene) — duerfen Rueckfragen stellen und lesen
+    JOHN_HUB_TOKEN_BERATER_<NAME>             der Schluessel der Beraterin NAME; fehlt er, wird er erzeugt (nie ausgegeben)
 
   Aufruf
     hub-deploy.ps1                 hochladen und danach wirklich abfragen
     hub-deploy.ps1 -TokenErzeugen  neues Token würfeln, als User-Variable setzen, hochladen
     hub-deploy.ps1 -GeraetErzeugen wolke   Schluessel fuer EIN Geraet neu wuerfeln (die anderen bleiben)
     hub-deploy.ps1 -NurGeraete     den alten ungebundenen Schluessel (hash) weglassen — wenn jedes Geraet seinen hat
+    hub-deploy.ps1 -BeraterErzeugen madelene   Schluessel fuer EINE Beraterin neu wuerfeln (der alte gilt danach nicht mehr)
+    hub-deploy.ps1 -BeraterKopieren madelene   nichts hochladen, nur ihren Schluessel in die Zwischenablage legen
     hub-deploy.ps1 -NurPruefen     nichts hochladen, nur die Live-Adresse abfragen
     hub-deploy.ps1 -Ziel '/hotel-vaikuntha.de'   eigenes Dokumentenverzeichnis (später)
 #>
@@ -35,6 +39,8 @@ param(
   [switch]$TokenErzeugen,
   [string]$GeraetErzeugen = '',
   [switch]$NurGeraete,
+  [string]$BeraterErzeugen = '',
+  [string]$BeraterKopieren = '',
   [switch]$NurPruefen
 )
 $ErrorActionPreference = 'Stop'
@@ -122,6 +128,40 @@ foreach ($g in $geraeteListe) {
   }
   $geraeteHashes[$g] = Hash256 $t
 }
+# ── Beraterinnen (16.09.2026, Bene: „Madelene gleichberechtigten Zugriff auf meinen Compass geben") ──
+# Eine Beraterin ist kein Geraet: sie stellt Rueckfragen und liest Benes Antworten (docs\protokoll.md ›
+# Rueckfragen). Ihr Schluessel wird nie ausgegeben — er gehoert in IHRE Umgebung, nicht in ein Log oder
+# einen Chat. Deshalb nur in die Zwischenablage, und nur auf ausdrueckliche Bitte.
+function BeraterVar([string]$b) { return 'JOHN_HUB_TOKEN_BERATER_' + (($b.ToUpperInvariant()) -replace '[^A-Z0-9]','_') }
+if ($BeraterKopieren) {
+  $t = LiesEnv (BeraterVar $BeraterKopieren.ToLowerInvariant())
+  if (-not $t) { Sag "Kein Schluessel fuer Beraterin '$BeraterKopieren' — erst hub-deploy.ps1 -BeraterErzeugen $BeraterKopieren" 'Red'; return }
+  Set-Clipboard -Value $t
+  Sag "Schluessel der Beraterin '$BeraterKopieren' liegt in der Zwischenablage ($($t.Length) Zeichen). In ihrer Umgebung als JOHN_HUB_TOKEN eintragen." 'Green'
+  return
+}
+$beraterListe = @()
+$beraterRoh = LiesEnv 'JOHN_HUB_BERATER'
+if ($beraterRoh) { $beraterListe = @($beraterRoh -split ',' | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ }) }
+if ($BeraterErzeugen -and ($beraterListe -notcontains $BeraterErzeugen.ToLowerInvariant())) {
+  $beraterListe += $BeraterErzeugen.ToLowerInvariant()
+  [Environment]::SetEnvironmentVariable('JOHN_HUB_BERATER', ($beraterListe -join ','), 'User')
+}
+$beraterHashes = @{}
+foreach ($b in $beraterListe) {
+  if ($b -notmatch '^[a-z0-9-]{2,30}$') { Sag "Beraterinnen-Name ungueltig: $b (a-z, 0-9, Bindestrich)" 'Red'; return }
+  $var = BeraterVar $b
+  $t = LiesEnv $var
+  if (-not $t -or ($BeraterErzeugen -and $b -eq $BeraterErzeugen.ToLowerInvariant())) {
+    $t = NeuerSchluessel
+    [Environment]::SetEnvironmentVariable($var, $t, 'User')
+    Set-Item -Path ("Env:" + $var) -Value $t
+    try { Set-Clipboard -Value $t; $wo = 'liegt in der Zwischenablage' } catch { $wo = "spaeter: hub-deploy.ps1 -BeraterKopieren $b" }
+    Sag "Schluessel fuer Beraterin '$b' erzeugt ($var) — $wo. In ihrer Umgebung als JOHN_HUB_TOKEN eintragen." 'Green'
+  }
+  $beraterHashes[$b] = Hash256 $t
+}
+
 if ($NurGeraete -and $geraeteHashes.Count -eq 0) { Sag '-NurGeraete ohne Geraete (JOHN_HUB_GERAETE) — dann kaeme niemand mehr hinein.' 'Red'; return }
 
 if (-not $Adresse) {
@@ -204,6 +244,9 @@ return [
 $(if (-not $NurGeraete) { "    'hash'         => '$hash',          /* alter ungebundener Geraete-Schluessel (Uebergang) */`n" })    'hash_browser' => '$hashBrowser',   /* Browser: stand, punkt, auftrag */
     'geraete'      => [                 /* ein Schluessel je Geraet, gebunden an den Namen (ADR 0007) */
 $(($geraeteHashes.Keys | Sort-Object | ForEach-Object { "        '$_' => '$($geraeteHashes[$_])'," }) -join "`n")
+    ],
+    'berater'      => [                 /* Beraterinnen: Rueckfragen stellen und lesen, gebunden an den Namen (16.09.2026) */
+$(($beraterHashes.Keys | Sort-Object | ForEach-Object { "        '$_' => '$($beraterHashes[$_])'," }) -join "`n")
     ],
 ];
 "@

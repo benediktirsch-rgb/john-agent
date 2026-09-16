@@ -28,6 +28,9 @@ const JH_AUFTRAG_H  = 24;       // Stunden, dann verfällt ein unbearbeiteter Au
 const JH_NIMM_MIN   = 15;       // Minuten, dann darf ein anderes Gerät den Auftrag holen
 const JH_ERGEBNIS_D = 7;        // Tage, dann räumt die Rezeption Ergebnisse weg
 const JH_WACH_S     = 180;      // Sekunden ohne Puls, dann gilt ein Gerät als schlafend
+const JH_RF_TAGE    = 30;       // Tage, dann räumt die Rezeption beantwortete/zurückgezogene Rückfragen weg
+const JH_RF_JE_VON  = 5;        // offene Rückfragen je Beraterin (Geräte haben keine eigene Grenze)
+const JH_RF_MAX     = 60;       // offene Rückfragen insgesamt
 
 header('Content-Type: application/json; charset=utf-8');
 /* Kein Access-Control-Allow-Origin: * mehr (11.09.2026, Madeleines Einwand): mit einem
@@ -91,8 +94,13 @@ function jh_id(string $p = ''): string { return $p . bin2hex(random_bytes(6)); }
  *  nachsehen, einen Punkt abraeumen, einen Auftrag stellen. Er kann Johns Stapel nicht
  *  ueberschreiben, keinen Auftrag beanspruchen und kein Ergebnis faelschen. */
 const JH_DARF = [
-    'geraet'  => ['stand','puls','stapel','punkt','auftrag','auftraege','nimm','ergebnis','log','spiegel','stapelstand','stopp'],
-    'browser' => ['stand','punkt','auftrag','stapelstand','stopp'],
+    'geraet'  => ['stand','puls','stapel','punkt','auftrag','auftraege','nimm','ergebnis','log','spiegel','stapelstand','stopp',
+                  'rueckfragen','rueckfrage','rueckfrage-antwort'],
+    'browser' => ['stand','punkt','auftrag','stapelstand','stopp','rueckfragen','rueckfrage-antwort'],
+    /* Beraterin (16.09.2026, Bene: „Madelene gleichberechtigten Zugriff auf meinen Compass geben und alle
+       Rueckfragen von ihr dort sehen"): sie fragt Bene und liest seine Antworten — wie Claude. Sie ist kein
+       Geraet: kein Puls, kein Auftrag, kein Stapel. Rueckfragen beantwortet nur Bene. */
+    'berater' => ['stand','rueckfragen','rueckfrage','log'],
 ];
 
 /**
@@ -146,8 +154,8 @@ function jh_bremse_zaehlen(string $salz): void {
     usleep(300000);                          // 0,3 s je Fehlversuch — Raten wird langsam, Betrieb nicht
 }
 
-/* Rueckgabe [klasse, geraet]: geraet ist der gebundene Name (token.php 'geraete', ADR 0007) oder
-   null fuer den alten ungebundenen Schluessel und den Browser. */
+/* Rueckgabe [klasse, name]: name ist der gebundene Name (token.php 'geraete', ADR 0007; 'berater', 16.09.2026)
+   oder null fuer den alten ungebundenen Schluessel und den Browser. */
 function jh_pruefe_token(): array {
     $datei = __DIR__ . '/token.php';
     if (!is_file($datei)) { jh_fehler('Rezeption nicht eingerichtet (token.php fehlt)', 500); }
@@ -160,6 +168,10 @@ function jh_pruefe_token(): array {
         foreach ((array)($cfg['geraete'] ?? []) as $name => $soll) {      // gebundene Schluessel zuerst
             $name = jh_text($name, 40);
             if ($name !== '' && is_string($soll) && $soll !== '' && hash_equals($soll, $meins)) { return ['geraet', $name]; }
+        }
+        foreach ((array)($cfg['berater'] ?? []) as $name => $soll) {      // Beraterinnen, ebenfalls gebunden
+            $name = jh_text($name, 40);
+            if (preg_match('/^[a-z0-9-]{2,30}$/', $name) && is_string($soll) && $soll !== '' && hash_equals($soll, $meins)) { return ['berater', $name]; }
         }
         foreach (['geraet' => 'hash', 'browser' => 'hash_browser'] as $klasse => $feld) {
             $soll = (string)($cfg[$feld] ?? '');
@@ -194,6 +206,7 @@ function jh_leer(): array {
         // angefasst, und json_encode macht daraus beim Wiederlesen ohnehin wieder eines.
         'geraete'   => [],
         'auftraege' => [],
+        'rueckfragen' => [],
         'log'       => [],
     ];
 }
@@ -203,6 +216,7 @@ function jh_normal(array $s): array {
     $s['geraete']   = (array)($s['geraete'] ?? []);
     $s['auftraege'] = array_values(array_filter((array)($s['auftraege'] ?? []), 'is_array'));
     $s['log']       = array_values(array_filter((array)($s['log'] ?? []), 'is_array'));
+    $s['rueckfragen'] = array_values(array_filter((array)($s['rueckfragen'] ?? []), 'is_array'));
     return $s;
 }
 
@@ -223,6 +237,13 @@ function jh_aufraeumen(array $s): array {
         $bleibt[] = $a;
     }
     $s['auftraege'] = $bleibt;
+    $rf = [];
+    foreach ($s['rueckfragen'] as $q) {
+        $st = (string)($q['status'] ?? 'offen');
+        if ($st !== 'offen' && (jh_alter($q['geaendert'] ?? null) ?? 0) > JH_RF_TAGE * 86400) continue;
+        $rf[] = $q;
+    }
+    $s['rueckfragen'] = $rf;
     if (count($s['log']) > JH_LOG_MAX) { $s['log'] = array_slice($s['log'], -JH_LOG_MAX); }
     unset($jetzt);
     return $s;
@@ -351,6 +372,28 @@ function jh_compass_ts(array $c): ?string {
     return $j;
 }
 
+/* ---------- Rueckfragen (16.09.2026) ------------------------------------------------
+   Dieselbe Form wie rhythmus-data.js › rueckfragen im Compass, plus Herkunft und Stand.
+   Die Rezeption haelt Frage, Optionen und Antwort — keine Zahlen, keine Personendaten;
+   daran halten sich die Fragenden (docs/protokoll.md › Rueckfragen). */
+function jh_rf_offen(array $s, ?string $von = null): int {
+    $n = 0;
+    foreach ($s['rueckfragen'] as $q) {
+        if ((string)($q['status'] ?? '') !== 'offen') continue;
+        if ($von !== null && (string)($q['von'] ?? '') !== $von) continue;
+        $n++;
+    }
+    return $n;
+}
+function jh_rf_finde(array $s, string $id): ?int {
+    foreach ($s['rueckfragen'] as $i => $q) { if ((string)($q['id'] ?? '') === $id) return $i; }
+    return null;
+}
+function jh_rf_datum(mixed $v): string {
+    $d = jh_text($v ?? '', 10);
+    return preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) ? $d : (new DateTimeImmutable('now'))->format('Y-m-d');
+}
+
 function jh_logzeile(array $s, string $art, string $text, ?string $geraet = null): array {
     $s['log'][] = ['zeit' => jh_jetzt(), 'art' => $art, 'text' => jh_text($text, 300), 'geraet' => $geraet ? jh_text($geraet, 40) : null];
     return $s;
@@ -400,6 +443,12 @@ function jh_stand_antwort(array $s): array {
         if ($tk && jh_neuer($tk, $taktZeit)) { $taktZeit = $tk; $taktGeraet = (string)$name; }
     }
     $taktAlter = jh_alter($taktZeit);
+    $rfVon = [];
+    foreach ($s['rueckfragen'] as $q) {
+        if ((string)($q['status'] ?? '') !== 'offen') continue;
+        $v = (string)($q['von'] ?? '?');
+        $rfVon[$v] = ($rfVon[$v] ?? 0) + 1;
+    }
     return [
         'ok' => true, 'jetzt' => jh_jetzt(), 'wach' => $wach,
         'takt' => ['letzter' => $taktZeit, 'geraet' => $taktGeraet, 'alter_s' => $taktAlter,
@@ -409,6 +458,7 @@ function jh_stand_antwort(array $s): array {
         'compass' => jh_compass($s),
         'raeume' => jh_raeume($s),
         'auftraege' => ['offen' => $offen, 'laufend' => $laeuft, 'fertig24' => $fertig],
+        'rueckfragen' => ['offen' => array_sum($rfVon), 'von' => (object)$rfVon],
         'log' => array_slice($s['log'], -20),
     ];
 }
@@ -434,7 +484,16 @@ if ($post) {
 switch ($was) {
 
 case 'stand':
-    jh_ende(jh_stand_antwort(jh_lesen()));
+    $st = jh_stand_antwort(jh_lesen());
+    /* Beraterin (16.09.2026): Johns Stapel, der Compass-Spiegel, die Raeume und das Logbuch bleiben
+       drin — sie sieht, ob John wach ist, wann er zuletzt dachte, und wie viele Rueckfragen offen sind.
+       Mehr erst, wenn Bene es so entscheidet (Rueckfrage madelene-sicht-stand). */
+    if ($jh_klasse === 'berater') {
+        $st = ['ok' => true, 'jetzt' => $st['jetzt'], 'wach' => $st['wach'], 'takt' => $st['takt'],
+               'geraete' => array_map(fn($g) => ['name' => $g['name'], 'wach' => $g['wach'], 'alter_s' => $g['alter_s']], $st['geraete']),
+               'auftraege' => $st['auftraege'], 'rueckfragen' => $st['rueckfragen'], 'sicht' => 'beraterin'];
+    }
+    jh_ende($st);
 
 case 'puls':
     if (!$post) jh_fehler('nur POST', 400);
@@ -673,6 +732,97 @@ case 'stapelstand':
         return [$s, ['ok' => true, 'eintrag' => $c['stand'][$key] ?? null]];
     }));
 
+case 'rueckfragen':
+    $status = jh_text($_GET['status'] ?? 'offen', 20);
+    if (!in_array($status, ['offen', 'beantwortet', 'zurueckgezogen', 'alle'], true)) jh_fehler('status: offen, beantwortet, zurueckgezogen oder alle', 400);
+    $von  = jh_text($_GET['von'] ?? '', 40);
+    $seit = jh_text($_GET['seit'] ?? '', 40);
+    $liste = [];
+    foreach (jh_lesen()['rueckfragen'] as $q) {
+        if ($status !== 'alle' && (string)($q['status'] ?? '') !== $status) continue;
+        if ($von !== '' && (string)($q['von'] ?? '') !== $von) continue;
+        if ($seit !== '' && !jh_neuer((string)($q['geaendert'] ?? ''), $seit)) continue;
+        $liste[] = $q;
+    }
+    usort($liste, fn($a, $b) => strcmp((string)($b['geaendert'] ?? ''), (string)($a['geaendert'] ?? '')));
+    jh_ende(['ok' => true, 'jetzt' => jh_jetzt(), 'rueckfragen' => array_slice($liste, 0, 100)]);
+
+case 'rueckfrage':
+    if (!$post) jh_fehler('nur POST', 400);
+    $id = jh_text($koerper['id'] ?? '', 60);
+    if (!preg_match('/^[a-z0-9][a-z0-9-]{2,59}$/', $id)) jh_fehler('id ungueltig ([a-z0-9-], 3-60 Zeichen)', 400);
+    // Wer fragt: die Beraterin unter ihrem gebundenen Namen, ein Geraet als „claude" (oder was es angibt).
+    $von = $jh_klasse === 'berater' ? (string)$jh_geraet : (jh_text($koerper['von'] ?? '', 40) ?: 'claude');
+    if (!preg_match('/^[a-z0-9-]{2,40}$/', $von)) jh_fehler('von ungueltig', 400);
+    if ($jh_klasse === 'berater' && !str_starts_with($id, $von . '-')) jh_fehler("id muss mit $von- beginnen", 400);
+    $zurueck = (bool)($koerper['zurueckziehen'] ?? false);
+    $felder = [];
+    if (!$zurueck) {
+        $frage = jh_text($koerper['frage'] ?? '', 500);
+        if ($frage === '') jh_fehler('frage fehlt', 400);
+        $optionen = [];
+        foreach (array_slice((array)($koerper['optionen'] ?? []), 0, 4) as $o) { $o = jh_text($o, 160); if ($o !== '') $optionen[] = $o; }
+        $link = jh_text($koerper['link'] ?? '', 400);
+        $felder = [
+            'projekt' => jh_text($koerper['projekt'] ?? '', 120) ?: $von,
+            'frage' => $frage, 'warum' => jh_text($koerper['warum'] ?? '', 2000),
+            'optionen' => $optionen, 'wann' => jh_rf_datum($koerper['wann'] ?? ''),
+            'link' => preg_match('~^https?://~', $link) ? $link : null,
+        ];
+    }
+    $antwortR = jh_schreiben(function (array $s) use ($id, $von, $zurueck, $felder, $jh_klasse) {
+        $i = jh_rf_finde($s, $id);
+        if ($i !== null && (string)($s['rueckfragen'][$i]['von'] ?? '') !== $von) {
+            return [$s, ['ok' => false, 'fehler' => 'diese Rueckfrage gehoert ' . (string)$s['rueckfragen'][$i]['von'], 'code' => 403]];
+        }
+        if ($zurueck) {
+            if ($i === null) return [$s, ['ok' => false, 'fehler' => 'Rueckfrage nicht gefunden', 'code' => 404]];
+            $st = (string)($s['rueckfragen'][$i]['status'] ?? '');
+            if ($st === 'beantwortet') return [$s, ['ok' => false, 'fehler' => 'schon beantwortet', 'code' => 409]];
+            $s['rueckfragen'][$i]['status'] = 'zurueckgezogen';
+            $s['rueckfragen'][$i]['geaendert'] = jh_jetzt();
+            $s = jh_logzeile($s, 'rueckfrage', "zurueckgezogen: $id ($von)");
+            return [$s, ['ok' => true, 'id' => $id, 'status' => 'zurueckgezogen', 'offen' => jh_rf_offen($s, $von)]];
+        }
+        if ($i !== null) {
+            $st = (string)($s['rueckfragen'][$i]['status'] ?? '');
+            if ($st === 'beantwortet') return [$s, ['ok' => false, 'fehler' => 'schon beantwortet — neue id nehmen', 'code' => 409]];
+            $s['rueckfragen'][$i] = array_merge($s['rueckfragen'][$i], $felder, ['status' => 'offen', 'geaendert' => jh_jetzt()]);
+            $s = jh_logzeile($s, 'rueckfrage', "geaendert: $id ($von)");
+            return [$s, ['ok' => true, 'id' => $id, 'status' => 'offen', 'offen' => jh_rf_offen($s, $von)]];
+        }
+        if ($jh_klasse === 'berater' && jh_rf_offen($s, $von) >= JH_RF_JE_VON) return [$s, ['ok' => false, 'fehler' => 'schon ' . JH_RF_JE_VON . ' offene Rueckfragen von ' . $von, 'code' => 409]];
+        if (jh_rf_offen($s) >= JH_RF_MAX) return [$s, ['ok' => false, 'fehler' => 'zu viele offene Rueckfragen', 'code' => 409]];
+        $s['rueckfragen'][] = ['id' => $id, 'von' => $von] + $felder + [
+            'erstellt' => jh_jetzt(), 'geaendert' => jh_jetzt(), 'status' => 'offen', 'antwort' => null,
+        ];
+        $s = jh_logzeile($s, 'rueckfrage', "neu: $id ($von)");
+        return [$s, ['ok' => true, 'id' => $id, 'status' => 'offen', 'offen' => jh_rf_offen($s, $von)]];
+    });
+    jh_ende($antwortR, (int)($antwortR['code'] ?? 200) >= 400 ? (int)$antwortR['code'] : 200);
+
+case 'rueckfrage-antwort':
+    if (!$post) jh_fehler('nur POST', 400);
+    $id = jh_text($koerper['id'] ?? '', 60);
+    $a  = jh_text($koerper['a'] ?? '', 200);
+    if ($id === '' || $a === '') jh_fehler('id und a noetig', 400);
+    $wer = jh_text($koerper['wer'] ?? $jh_klasse, 20);
+    if (!in_array($wer, ['compass', 'checkin', 'claude', 'geraet', 'browser'], true)) $wer = $jh_klasse;
+    $ts = jh_rf_datum($koerper['ts'] ?? '');
+    $antwortA = jh_schreiben(function (array $s) use ($id, $a, $wer, $ts) {
+        $i = jh_rf_finde($s, $id);
+        if ($i === null) return [$s, ['ok' => false, 'fehler' => 'Rueckfrage nicht gefunden', 'code' => 404]];
+        if ((string)($s['rueckfragen'][$i]['status'] ?? '') === 'zurueckgezogen') return [$s, ['ok' => false, 'fehler' => 'zurueckgezogen', 'code' => 409]];
+        $alt = $s['rueckfragen'][$i]['antwort'] ?? null;
+        if (is_array($alt) && ($alt['a'] ?? '') === $a) return [$s, ['ok' => true, 'id' => $id, 'unveraendert' => true]];
+        $s['rueckfragen'][$i]['status'] = 'beantwortet';
+        $s['rueckfragen'][$i]['antwort'] = ['a' => $a, 'ts' => $ts, 'wer' => $wer, 'zeit' => jh_jetzt()];
+        $s['rueckfragen'][$i]['geaendert'] = jh_jetzt();
+        $s = jh_logzeile($s, 'rueckfrage', "beantwortet: $id (" . (string)($s['rueckfragen'][$i]['von'] ?? '?') . ", $wer)");
+        return [$s, ['ok' => true, 'id' => $id, 'status' => 'beantwortet']];
+    });
+    jh_ende($antwortA, (int)($antwortA['code'] ?? 200) >= 400 ? (int)$antwortA['code'] : 200);
+
 default:
-    jh_fehler('unbekannt: w=' . jh_text($was, 40) . ' (stand, puls, stapel, punkt, auftrag, auftraege, nimm, ergebnis, log, spiegel, stapelstand, stopp)', 400);
+    jh_fehler('unbekannt: w=' . jh_text($was, 40) . ' (stand, puls, stapel, punkt, auftrag, auftraege, nimm, ergebnis, log, spiegel, stapelstand, stopp, rueckfragen, rueckfrage, rueckfrage-antwort)', 400);
 }
