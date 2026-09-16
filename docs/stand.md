@@ -3,6 +3,28 @@
 Diese Datei wird bei **jeder** Änderung nachgezogen. Sie ist die einzige Stelle, an der die
 nächste Session sieht, wo sie steht.
 
+## Neu am 16.09.2026 abends: eine Madelene
+
+Bene: „Nur pro Frage, mit Vorschau und 30 Tagen“ und „Madelene ist eine Person“.
+
+- **Rezeption (live, f6ffce0):**
+  - `w=freigabe` / `w=freigaben`: Musterprüfung, höchstens 30 Tage, Widerruf löscht.
+  - `w=gedaechtnis`: Astra und Beratungs-Laufzeit schreiben und lesen.
+  - `w=persona`: nur ein Gerät lädt hoch, die Persona liegt in `daten/`, das per `.htaccess` gesperrt ist.
+  - `bezug` an Rückfragen.
+  - Prüfstand 92/92 lokal. Live lesend geprüft: Browser, Astra, Gerät je 200; Persona für den Browser 403, Persona-Datei direkt 403.
+- **Persona:** `hub-deploy.ps1` lädt `C:\dev\madeleine\persona-gemeinsam.md` hoch (nach Sperrliste und Muster; 3168 Zeichen live).
+- **Compass (flow-compass 38e8850):**
+  - Knopf „🔓 Für Madelene …“ in `compass-fragen-rezeption.js`.
+  - Im Browser gegen eine Test-Rezeption geprüft: Warnung bei Betrag, Senden mit 14 Tagen, Madelene sieht genau den Vorschau-Text, Widerruf löscht.
+  - Staging ist live, Prod folgt beim nächsten Publish nach dem Commit der Wolke-Session.
+- **Beratungs-Laufzeit:**
+  - `flow-compass/produkt/server/madelene-gemeinsam.ps1` in `john-madeleine.ps1` eingebunden, john-server neu gestartet. Status nennt `persona-gemeinsam.md` und die drei Rezeptionsquellen.
+  - `madeleine.ps1` (wolke) bindet das Modul in der Session „Briefkasten/Madeleine auf wolke“ ein.
+- **Offen:**
+  - Astra liest `docs/madelene-compass.md` Abschnitt 9 (Hinweis ins Issue #1 über die Astra-Postfach-Routine).
+  - Themen-Vorauswahl (Weg B) ist bewusst nicht gebaut.
+
 ## Läuft (Stand 11.09.2026, 14:45)
 
 | Teil | Zustand | geprüft womit |
