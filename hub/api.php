@@ -31,6 +31,10 @@ const JH_WACH_S     = 180;      // Sekunden ohne Puls, dann gilt ein Gerät als 
 const JH_RF_TAGE    = 30;       // Tage, dann räumt die Rezeption beantwortete/zurückgezogene Rückfragen weg
 const JH_RF_JE_VON  = 5;        // offene Rückfragen je Beraterin (Geräte haben keine eigene Grenze)
 const JH_RF_MAX     = 60;       // offene Rückfragen insgesamt
+const JH_FG_TAGE    = 30;       // Freigaben laufen spaetestens nach so vielen Tagen ab (Bene, 16.09.2026)
+const JH_FG_MAX     = 200;      // Freigaben insgesamt
+const JH_GD_MAX     = 100;      // Eintraege im gemeinsamen Gedaechtnis je Beraterin
+const JH_PERSONA_MAX = 20000;   // Zeichen der Persona je Beraterin
 
 header('Content-Type: application/json; charset=utf-8');
 /* Kein Access-Control-Allow-Origin: * mehr (11.09.2026, Madeleines Einwand): mit einem
@@ -95,12 +99,12 @@ function jh_id(string $p = ''): string { return $p . bin2hex(random_bytes(6)); }
  *  ueberschreiben, keinen Auftrag beanspruchen und kein Ergebnis faelschen. */
 const JH_DARF = [
     'geraet'  => ['stand','puls','stapel','punkt','auftrag','auftraege','nimm','ergebnis','log','spiegel','stapelstand','stopp',
-                  'rueckfragen','rueckfrage','rueckfrage-antwort'],
-    'browser' => ['stand','punkt','auftrag','stapelstand','stopp','rueckfragen','rueckfrage-antwort'],
+                  'rueckfragen','rueckfrage','rueckfrage-antwort','freigabe','freigaben','gedaechtnis','persona'],
+    'browser' => ['stand','punkt','auftrag','stapelstand','stopp','rueckfragen','rueckfrage-antwort','freigabe','freigaben','gedaechtnis'],
     /* Beraterin (16.09.2026, Bene: „Madelene gleichberechtigten Zugriff auf meinen Compass geben und alle
        Rueckfragen von ihr dort sehen"): sie fragt Bene und liest seine Antworten — wie Claude. Sie ist kein
        Geraet: kein Puls, kein Auftrag, kein Stapel. Rueckfragen beantwortet nur Bene. */
-    'berater' => ['stand','rueckfragen','rueckfrage','log'],
+    'berater' => ['stand','rueckfragen','rueckfrage','log','freigaben','gedaechtnis','persona'],
 ];
 
 /**
@@ -207,6 +211,8 @@ function jh_leer(): array {
         'geraete'   => [],
         'auftraege' => [],
         'rueckfragen' => [],
+        'freigaben' => [],
+        'gedaechtnis' => [],
         'log'       => [],
     ];
 }
@@ -217,6 +223,10 @@ function jh_normal(array $s): array {
     $s['auftraege'] = array_values(array_filter((array)($s['auftraege'] ?? []), 'is_array'));
     $s['log']       = array_values(array_filter((array)($s['log'] ?? []), 'is_array'));
     $s['rueckfragen'] = array_values(array_filter((array)($s['rueckfragen'] ?? []), 'is_array'));
+    $s['freigaben']   = array_values(array_filter((array)($s['freigaben'] ?? []), 'is_array'));
+    $gd = [];
+    foreach ((array)($s['gedaechtnis'] ?? []) as $fuer => $liste) { $gd[(string)$fuer] = array_values(array_filter((array)$liste, 'is_array')); }
+    $s['gedaechtnis'] = $gd;
     return $s;
 }
 
@@ -244,6 +254,12 @@ function jh_aufraeumen(array $s): array {
         $rf[] = $q;
     }
     $s['rueckfragen'] = $rf;
+    /* Abgelaufene Freigaben werden geloescht, nicht ausgeblendet (Bene, 16.09.2026). */
+    $s['freigaben'] = array_values(array_filter($s['freigaben'], 'jh_fg_gueltig'));
+    if (count($s['freigaben']) > JH_FG_MAX) { $s['freigaben'] = array_slice($s['freigaben'], -JH_FG_MAX); }
+    foreach ($s['gedaechtnis'] as $fuer => $liste) {
+        if (count($liste) > JH_GD_MAX) { $s['gedaechtnis'][$fuer] = array_slice($liste, -JH_GD_MAX); }
+    }
     if (count($s['log']) > JH_LOG_MAX) { $s['log'] = array_slice($s['log'], -JH_LOG_MAX); }
     unset($jetzt);
     return $s;
@@ -398,6 +414,35 @@ function jh_rf_datum(mixed $v): string {
     $d = jh_text($v ?? '', 10);
     return preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) ? $d : (new DateTimeImmutable('now'))->format('Y-m-d');
 }
+
+/* ---------- Freigaben und gemeinsames Gedaechtnis (16.09.2026) -------------------------
+   Bene: „Kontext moechte ich gezielt pro Frage freigeben koennen" (Rueckfrage madelene-freigabe-modell:
+   nur pro Frage, mit Vorschau, 30 Tage) und „Madelene ist eine Person" (Astra und die lokale Laufzeit
+   teilen Persona und Gedaechtnis). Die Rezeption speichert nur den Text, den Bene in der Vorschau
+   gesehen hat — nie einen Verweis auf eine Quelle. Vier Muster sind fast immer vertraulich; ein Treffer
+   blockiert, solange Bene nicht ausdruecklich „trotzdem" sagt. Gedaechtnis und Persona nehmen
+   Treffer gar nicht an: dort schreibt niemand, der vorher eine Vorschau gesehen hat. */
+function jh_muster(string $t): array {
+    $m = [];
+    if (preg_match('/\d[\d.,]*\s?(€|eur\b|euro\b|\$|usd\b|tsd\b|t€|k€)/iu', $t) || preg_match('/(€|\$)\s?\d/u', $t)
+        || preg_match('/\b\d+(?:[.,]\d+)?\s?k\b/iu', $t)) $m[] = 'betrag';
+    if (preg_match('/\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){3,7}/', mb_strtoupper($t))) $m[] = 'iban';
+    if (preg_match('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i', $t)) $m[] = 'mail';
+    if (preg_match('/(?:\+|\b00)\d[\d \/-]{7,}\d|\b0\d{2,5}[ \/-]?\d{3,}[\d -]{2,}\d\b/', $t)) $m[] = 'telefon';
+    return $m;
+}
+function jh_fg_gueltig(array $f): bool {
+    return (string)($f['bis'] ?? '') >= (new DateTimeImmutable('now'))->format('Y-m-d');
+}
+function jh_fg_finde(array $s, string $id): ?int {
+    foreach ($s['freigaben'] as $i => $f) { if ((string)($f['id'] ?? '') === $id) return $i; }
+    return null;
+}
+function jh_name(mixed $v): string {
+    $n = jh_text($v ?? '', 30);
+    return preg_match('/^[a-z0-9-]{2,30}$/', $n) ? $n : '';
+}
+function jh_persona_datei(string $fuer): string { return JH_DATEN . '/persona-' . $fuer . '.md'; }
 
 function jh_logzeile(array $s, string $art, string $text, ?string $geraet = null): array {
     $s['log'][] = ['zeit' => jh_jetzt(), 'art' => $art, 'text' => jh_text($text, 300), 'geraet' => $geraet ? jh_text($geraet, 40) : null];
@@ -774,12 +819,20 @@ case 'rueckfrage':
         $optionen = [];
         foreach (array_slice((array)($koerper['optionen'] ?? []), 0, 4) as $o) { $o = jh_text($o, 160); if ($o !== '') $optionen[] = $o; }
         $link = jh_text($koerper['link'] ?? '', 400);
+        /* bezug (16.09.2026): Madelene bittet um Kontext zu bis zu fuenf Rueckfragen — Bene gibt ihn im
+           Compass frei oder nicht. Die Rezeption prueft nur die Form, nicht ob die ids existieren. */
+        $bezug = [];
+        foreach (array_slice((array)($koerper['bezug'] ?? []), 0, 5) as $b) {
+            $b = jh_text($b, 60);
+            if (preg_match('/^[a-z0-9][a-z0-9-]{2,59}$/', $b)) $bezug[] = $b;
+        }
         $felder = [
             'projekt' => jh_text($koerper['projekt'] ?? '', 120) ?: $von,
             'frage' => $frage, 'warum' => jh_text($koerper['warum'] ?? '', 2000),
             'optionen' => $optionen, 'wann' => jh_rf_datum($koerper['wann'] ?? ''),
             'link' => preg_match('~^https?://~', $link) ? $link : null,
             'dringend' => (bool)($koerper['dringend'] ?? false),
+            'bezug' => $bezug,
         ];
     }
     $antwortR = jh_schreiben(function (array $s) use ($id, $von, $zurueck, $felder, $jh_klasse) {
@@ -845,6 +898,120 @@ case 'rueckfrage-antwort':
     });
     jh_ende($antwortA, (int)($antwortA['code'] ?? 200) >= 400 ? (int)$antwortA['code'] : 200);
 
+case 'freigaben':
+    /* Eine Beraterin sieht nur, was fuer sie freigegeben und noch nicht abgelaufen ist. */
+    $fuer = $jh_klasse === 'berater' ? (string)$jh_geraet : jh_name($_GET['fuer'] ?? '');
+    $liste = [];
+    foreach (jh_lesen()['freigaben'] as $f) {
+        if (!jh_fg_gueltig($f)) continue;
+        if ($fuer !== '' && (string)($f['fuer'] ?? '') !== $fuer) continue;
+        $liste[] = $f;
+    }
+    usort($liste, fn($a, $b) => strcmp((string)($b['erstellt'] ?? ''), (string)($a['erstellt'] ?? '')));
+    jh_ende(['ok' => true, 'jetzt' => jh_jetzt(), 'freigaben' => $liste]);
+
+case 'freigabe':
+    /* Nur Bene (Compass im Browser) oder ein Geraet in seinem Auftrag. Beraterinnen haben das Recht nicht. */
+    if (!$post) jh_fehler('nur POST', 400);
+    $fid = jh_text($koerper['id'] ?? '', 40);
+    if (!empty($koerper['widerrufen'])) {
+        if ($fid === '') jh_fehler('id fehlt', 400);
+        $antwortW = jh_schreiben(function (array $s) use ($fid) {
+            $i = jh_fg_finde($s, $fid);
+            if ($i === null) return [$s, ['ok' => false, 'fehler' => 'Freigabe nicht gefunden', 'code' => 404]];
+            $fuer = (string)($s['freigaben'][$i]['fuer'] ?? '?');
+            array_splice($s['freigaben'], $i, 1);          // Widerruf loescht, er blendet nicht nur aus
+            $s = jh_logzeile($s, 'freigabe', "widerrufen: $fid ($fuer)");
+            return [$s, ['ok' => true, 'id' => $fid, 'widerrufen' => true]];
+        });
+        jh_ende($antwortW, (int)($antwortW['code'] ?? 200) >= 400 ? (int)$antwortW['code'] : 200);
+    }
+    $fuer = jh_name($koerper['fuer'] ?? '');
+    if ($fuer === '') jh_fehler('fuer fehlt ([a-z0-9-], z. B. madelene)', 400);
+    $frage = jh_text($koerper['frage'] ?? '', 800);
+    if ($frage === '') jh_fehler('frage fehlt', 400);
+    $antwort = jh_text($koerper['antwort'] ?? '', 400);
+    $notiz = jh_text($koerper['notiz'] ?? '', 800);
+    $bezug = jh_text($koerper['bezug'] ?? '', 60);
+    if ($bezug !== '' && !preg_match('/^[a-z0-9][a-z0-9-]{2,59}$/', $bezug)) $bezug = '';
+    $tage = max(1, min(JH_FG_TAGE, (int)($koerper['tage'] ?? JH_FG_TAGE)));
+    $muster = jh_muster($frage . "\n" . $antwort . "\n" . $notiz);
+    if ($muster && empty($koerper['trotzdem'])) {
+        jh_ende(['ok' => false, 'fehler' => 'Text enthaelt vermutlich Vertrauliches', 'muster' => $muster], 422);
+    }
+    $eintrag = ['fuer' => $fuer, 'bezug' => $bezug ?: null, 'frage' => $frage,
+                'antwort' => $antwort !== '' ? $antwort : null, 'notiz' => $notiz !== '' ? $notiz : null,
+                'bis' => (new DateTimeImmutable('now'))->modify("+$tage days")->format('Y-m-d'),
+                'bestaetigt' => $muster ?: null];
+    $antwortF = jh_schreiben(function (array $s) use ($fid, $eintrag) {
+        $i = $fid !== '' ? jh_fg_finde($s, $fid) : null;
+        if ($i === null && $eintrag['bezug']) {          // dieselbe Frage fuer dieselbe Person ersetzt sich
+            foreach ($s['freigaben'] as $k => $f) {
+                if (($f['bezug'] ?? null) === $eintrag['bezug'] && ($f['fuer'] ?? '') === $eintrag['fuer']) { $i = $k; break; }
+            }
+        }
+        if ($i !== null) {
+            $s['freigaben'][$i] = array_merge($s['freigaben'][$i], $eintrag, ['geaendert' => jh_jetzt()]);
+            $id = (string)$s['freigaben'][$i]['id'];
+            $s = jh_logzeile($s, 'freigabe', "erneuert: $id fuer " . $eintrag['fuer']);
+            return [$s, ['ok' => true, 'id' => $id, 'bis' => $eintrag['bis'], 'erneuert' => true]];
+        }
+        $id = jh_id('fg-');
+        $s['freigaben'][] = ['id' => $id] + $eintrag + ['erstellt' => jh_jetzt()];
+        $s = jh_logzeile($s, 'freigabe', "neu: $id fuer " . $eintrag['fuer']);
+        return [$s, ['ok' => true, 'id' => $id, 'bis' => $eintrag['bis']]];
+    });
+    jh_ende($antwortF);
+
+case 'gedaechtnis':
+    /* Madelenes gemeinsames Gedaechtnis: Astra (Beraterin) und die lokale Laufzeit (Geraet) schreiben,
+       beide lesen. Nur Saetze ohne Betraege, Kontodaten, Adressen und Telefonnummern. */
+    $fuer = $jh_klasse === 'berater' ? (string)$jh_geraet : jh_name($post ? ($koerper['fuer'] ?? '') : ($_GET['fuer'] ?? ''));
+    if ($fuer === '') jh_fehler('fuer fehlt', 400);
+    if (!$post) {
+        $liste = jh_lesen()['gedaechtnis'][$fuer] ?? [];
+        jh_ende(['ok' => true, 'jetzt' => jh_jetzt(), 'fuer' => $fuer, 'eintraege' => array_reverse(array_slice($liste, -50))]);
+    }
+    if ($jh_klasse === 'browser') jh_fehler('der Browser liest das Gedaechtnis nur', 403);
+    $text = jh_text($koerper['text'] ?? '', 1500);
+    if ($text === '') jh_fehler('text fehlt', 400);
+    $muster = jh_muster($text);
+    if ($muster) jh_ende(['ok' => false, 'fehler' => 'ins gemeinsame Gedaechtnis gehoert nichts Vertrauliches', 'muster' => $muster], 422);
+    $von = $jh_klasse === 'berater' ? 'astra' : ('lokal:' . ($jh_geraet ?? 'geraet'));
+    $thema = jh_text($koerper['thema'] ?? '', 80);
+    $antwortG = jh_schreiben(function (array $s) use ($fuer, $text, $von, $thema) {
+        foreach ($s['gedaechtnis'][$fuer] ?? [] as $e) {
+            if (($e['text'] ?? '') === $text) return [$s, ['ok' => true, 'unveraendert' => true]];
+        }
+        $id = jh_id('gd-');
+        $s['gedaechtnis'][$fuer][] = ['id' => $id, 'von' => $von, 'thema' => $thema !== '' ? $thema : null, 'ts' => jh_jetzt(), 'text' => $text];
+        $s = jh_logzeile($s, 'gedaechtnis', "neu: $id ($fuer, $von)");
+        return [$s, ['ok' => true, 'id' => $id]];
+    });
+    jh_ende($antwortG);
+
+case 'persona':
+    /* Eine Persona fuer beide Laufwege. Hochladen darf nur ein Geraet (hub-deploy.ps1), lesen die Beraterin
+       ihre eigene. Liegt als Datei neben stand.json, .htaccess sperrt .md. */
+    $fuer = $jh_klasse === 'berater' ? (string)$jh_geraet : jh_name($post ? ($koerper['fuer'] ?? '') : ($_GET['fuer'] ?? ''));
+    if ($fuer === '') jh_fehler('fuer fehlt', 400);
+    $datei = jh_persona_datei($fuer);
+    if (!$post) {
+        if (!is_file($datei)) jh_ende(['ok' => false, 'fehler' => 'keine Persona hinterlegt', 'fuer' => $fuer], 404);
+        jh_ende(['ok' => true, 'fuer' => $fuer, 'stand' => date('c', (int)filemtime($datei)), 'text' => (string)file_get_contents($datei)]);
+    }
+    if ($jh_klasse !== 'geraet') jh_fehler('nur ein Geraet laedt die Persona hoch', 403);
+    $text = mb_substr(str_replace("\r", '', (string)($koerper['text'] ?? '')), 0, JH_PERSONA_MAX);
+    if (trim($text) === '') jh_fehler('text fehlt', 400);
+    $muster = jh_muster($text);
+    if ($muster) jh_ende(['ok' => false, 'fehler' => 'Persona enthaelt vermutlich Vertrauliches', 'muster' => $muster], 422);
+    if (!is_dir(JH_DATEN)) { @mkdir(JH_DATEN, 0700, true); }
+    if (@file_put_contents($datei, $text, LOCK_EX) === false) jh_fehler('Persona nicht schreibbar', 500);
+    jh_ende(jh_schreiben(function (array $s) use ($fuer, $text) {
+        $s = jh_logzeile($s, 'persona', "hochgeladen: $fuer (" . mb_strlen($text) . ' Zeichen)');
+        return [$s, ['ok' => true, 'fuer' => $fuer, 'zeichen' => mb_strlen($text)]];
+    }));
+
 default:
-    jh_fehler('unbekannt: w=' . jh_text($was, 40) . ' (stand, puls, stapel, punkt, auftrag, auftraege, nimm, ergebnis, log, spiegel, stapelstand, stopp, rueckfragen, rueckfrage, rueckfrage-antwort)', 400);
+    jh_fehler('unbekannt: w=' . jh_text($was, 40) . ' (stand, puls, stapel, punkt, auftrag, auftraege, nimm, ergebnis, log, spiegel, stapelstand, stopp, rueckfragen, rueckfrage, rueckfrage-antwort, freigabe, freigaben, gedaechtnis, persona)', 400);
 }

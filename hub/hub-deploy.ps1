@@ -47,7 +47,11 @@ param(
   [string]$BeraterKopieren = '',
   [string]$BeraterWiderrufen = '',
   [switch]$OhneWarten,
-  [switch]$NurPruefen
+  [switch]$NurPruefen,
+  # Eine Madelene (16.09.2026): gemeinsame Persona beider Laufwege, geht nach dem Hochladen an w=persona.
+  [string]$Persona = 'C:\dev\madeleine\persona-gemeinsam.md',
+  [string]$PersonaFuer = 'madelene',
+  [switch]$OhnePersona
 )
 $ErrorActionPreference = 'Stop'
 $Hier = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -236,6 +240,33 @@ function Pruefe {
 
 if ($NurPruefen) { Pruefe | Out-Null; return }
 
+# ── Gemeinsame Persona (16.09.2026) ───────────────────────────────────────────────────────
+# Geht an Astra. Deshalb zwei Sperren vor dem Hochladen: die lokale Sperrliste (C:\dev\madeleine\.sperrliste,
+# nie ausgegeben) und dieselben vier Muster wie in der Rezeption. Ein Treffer bricht nur diesen Schritt ab.
+function LadePersona {
+  if ($OhnePersona) { return }
+  if (-not (Test-Path $Persona)) { Sag "  Persona: $Persona fehlt — uebersprungen" 'Yellow'; return }
+  $text = [IO.File]::ReadAllText($Persona, [Text.Encoding]::UTF8).Replace("`r`n", "`n")
+  $sperr = Join-Path (Split-Path -Parent $Persona) '.sperrliste'
+  if (Test-Path $sperr) {
+    foreach ($z in [IO.File]::ReadAllLines($sperr, [Text.Encoding]::UTF8)) {
+      $z = $z.Trim()
+      if ($z -and -not $z.StartsWith('#') -and $text.IndexOf($z, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        Sag '  Persona NICHT hochgeladen: ein Begriff aus der Sperrliste steht darin.' 'Red'; return
+      }
+    }
+  }
+  try {
+    $body = [Text.Encoding]::UTF8.GetBytes((@{ fuer = $PersonaFuer; text = $text } | ConvertTo-Json -Compress))
+    $r = Invoke-RestMethod -Uri "$Adresse/api.php?w=persona" -Method Post -Headers @{ 'X-John-Token' = $token } `
+      -ContentType 'application/json; charset=utf-8' -Body $body -TimeoutSec 20 -UseBasicParsing
+    if ($r.ok) { Sag "  Persona fuer $PersonaFuer hochgeladen ($($r.zeichen) Zeichen)" 'Green' }
+  } catch {
+    $code = ''; try { $code = [int]$_.Exception.Response.StatusCode } catch { }
+    Sag "  Persona nicht hochgeladen (HTTP $code): $($_.Exception.Message)" 'Red'
+  }
+}
+
 # ── FTPS ─────────────────────────────────────────────────────────────────────────────────
 $zugang = @{}
 foreach ($k in 'VA_FTP_HOST','VA_FTP_USER','VA_FTP_PASS') {
@@ -303,6 +334,7 @@ if ($ok) {
     [Environment]::SetEnvironmentVariable('JOHN_HUB_URL', $Adresse, 'User')
     Sag "  (als Benutzer-Umgebungsvariable gesetzt — Worker beim nächsten Start neu einlesen lassen)" 'DarkGray'
   }
+  LadePersona
   Leere-Zwischenablage
 } else {
   Leere-Zwischenablage

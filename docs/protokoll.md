@@ -258,7 +258,7 @@ Antwort — keine Zahlen, keine Personendaten (ADR 0002). Wer fragt, hält sich 
 | Aufruf | wer | Antwort |
 |---|---|---|
 | `GET w=rueckfragen[&status=offen\|beantwortet\|zurueckgezogen\|alle][&von=<name>][&seit=<iso>]` | Gerät, Browser, Beraterin | `{ok, jetzt, rueckfragen:[…]}` — jüngste Änderung zuerst, höchstens 100. Standard `status=offen`; `seit` liefert nur, was danach geändert wurde. **Eine Beraterin sieht nur ihre eigenen** (`von` wird erzwungen, ein fremdes `von` → **403**) |
-| `POST w=rueckfrage {id, projekt, frage, warum, optionen, wann?, link?, von?}` | Gerät, Beraterin | anlegen oder die eigene ändern: `{ok, id, status, offen}`. Beraterin: `von` ist ihr gebundener Name, `von` im Körper wird ignoriert. Gerät: `von` Standard `claude`. Gleiche `id` desselben `von` → aktualisiert; fremde `id` → **403**; schon beantwortet → **409** (neue id nehmen) |
+| `POST w=rueckfrage {id, projekt, frage, warum, optionen, wann?, link?, von?, bezug?}` | Gerät, Beraterin | anlegen oder die eigene ändern: `{ok, id, status, offen}`. Beraterin: `von` ist ihr gebundener Name, `von` im Körper wird ignoriert. Gerät: `von` Standard `claude`. Gleiche `id` desselben `von` → aktualisiert; fremde `id` → **403**; schon beantwortet → **409** (neue id nehmen) |
 | `POST w=rueckfrage {id, zurueckziehen: true}` | Gerät, Beraterin | nur die eigene: `status=zurueckgezogen`. Unbekannt **404**, beantwortet **409** |
 | `POST w=rueckfrage-antwort {id, a, ts?, wer?}` | Gerät, Browser | `a` Pflicht (≤ 200), `ts` Datum (Standard heute, Berlin), `wer` `compass\|checkin\|claude\|geraet`. Setzt `status=beantwortet`, `antwort={a, ts, wer, zeit}`; eine spätere Antwort überschreibt (wie `Add-Antwort -direkt` im Compass-Server). Unbekannt **404**, zurückgezogen **409** |
 
@@ -287,6 +287,57 @@ ergeben einen Eintrag, weil jede Schreibung unter derselben Sperre liest und pr�
   Die Schnittstelle trägt es schon: ein Gerät legt Fragen mit `von=claude` an.
 - **Madelene** (Beraterinnen-Schlüssel): legt Rückfragen an, liest Antworten, zieht zurück. Sie ist kein Gerät:
   kein `puls`, kein `nimm`, kein `ergebnis`, kein `stapel`.
+
+### Freigaben, gemeinsames Gedächtnis, Persona: `w=freigabe`, `w=freigaben`, `w=gedaechtnis`, `w=persona` (seit 16.09.2026)
+
+Bene, 16.09.2026, Rückfrage `madelene-freigabe-modell`: „Nur pro Frage, mit Vorschau und 30 Tagen.“ Am selben Tag
+kam die zweite Entscheidung dazu: „Madelene ist eine Person.“ Astra (ChatGPT Work) und die Beratungs-Laufzeit (Codex
+im john-server bzw. auf wolke) teilen deshalb eine Persona und ein Gedächtnis. Vorschlag und Begründung:
+`docs/madelene-freigaben-vorschlag.md`.
+
+**Musterprüfung** (`jh_muster`, gleichlautend in `compass-fragen-rezeption.js` und
+`flow-compass/produkt/server/madelene-gemeinsam.ps1`). Vier Muster sind fast immer vertraulich:
+- `betrag`: Ziffern mit €, $, EUR, Euro, USD, Tsd, t€/k€ oder „k“
+- `iban`
+- `mail`
+- `telefon`
+
+Der Compass prüft zusätzlich gegen die Namen aus dem Pool. Diese Liste bleibt im Browser.
+
+| Aufruf | wer | Antwort |
+|---|---|---|
+| `POST w=freigabe {fuer, frage, antwort?, notiz?, bezug?, tage?, trotzdem?, id?}` | Browser, Gerät | `{ok, id, bis}`. Einzelheiten siehe unten. Mit `id` oder gleichem `bezug`+`fuer`: erneuert (`erneuert: true`) |
+| `POST w=freigabe {id, widerrufen: true}` | Browser, Gerät | **löscht** den Eintrag; unbekannt **404** |
+| `GET w=freigaben[&fuer=<name>]` | Gerät, Browser, Beraterin | `{ok, jetzt, freigaben:[{id, fuer, bezug, frage, antwort, notiz, bis, erstellt, bestaetigt}]}`, jüngste zuerst, nur nicht Abgelaufene. **Eine Beraterin sieht nur ihre eigenen**, `fuer` wird bei ihr ignoriert |
+| `GET w=gedaechtnis&fuer=<name>` | Gerät, Browser, Beraterin | `{ok, fuer, eintraege:[{id, von, thema, ts, text}]}`: die 50 jüngsten, jüngste zuerst. Beraterin: immer ihr eigenes |
+| `POST w=gedaechtnis {text, thema?, fuer?}` | Beraterin, Gerät | `{ok, id}`. Einzelheiten siehe unten |
+| `GET w=persona[&fuer=<name>]` | Gerät, Beraterin | `{ok, fuer, stand, text}`; fehlt sie **404**. Beraterin: ihre eigene |
+| `POST w=persona {fuer, text}` | nur Gerät | ≤ 20 000 Zeichen, Musterprüfung **ohne** `trotzdem` (**422**). Liegt als `daten/persona-<fuer>.md`; `.htaccess` sperrt `.md` |
+
+Zu `POST w=freigabe`:
+- `fuer` ist `[a-z0-9-]`.
+- `frage` ≤ 800 Zeichen, `antwort` ≤ 400, `notiz` ≤ 800.
+- `tage` liegt zwischen 1 und 30, Standard 30.
+- Ein Treffer der Musterprüfung ergibt **422** `{muster:[…]}`, solange `trotzdem` fehlt. Mit `trotzdem` wird er in `bestaetigt` festgehalten.
+
+Zu `POST w=gedaechtnis`:
+- `text` ≤ 1500 Zeichen, Musterprüfung **ohne** `trotzdem` (**422**).
+- `von` ist `astra` (Beraterin) oder `lokal:<gerät>`.
+- Ein gleicher Text ergibt `unveraendert`.
+- Der Browser schreibt nicht (**403**).
+- Höchstens 100 Einträge je Person.
+
+- **Nichts fließt automatisch.** Freigaben entstehen nur aus Benes Vorschau im Compass (`🔓 Für Madelene …` an jeder
+  Rückfrage und jeder Zeile „entschieden“). Beraterinnen haben `w=freigabe` nicht.
+- **Ablauf und Widerruf löschen.** Abgelaufenes räumt jede Schreibung weg, ein Widerruf entfernt den Eintrag sofort.
+- **Kontext auf Anfrage:** `POST w=rueckfrage` nimmt `bezug: [<id>, …]` (höchstens 5, nur gültige Kennungen). Der
+  Compass zeigt dann „📎 bittet um Kontext zu …“ und einen Freigabe-Knopf je Bezug.
+- **Logbuch:** nur `neu/erneuert/widerrufen: <id> fuer <name>`, `neu: <id> (<name>, <von>)`, `hochgeladen: <name> (<n>
+  Zeichen)` — nie Frage, Antwort, Notiz, Gedächtnistext oder Persona.
+- **Wer liest was:**
+  - Astra liest `w=persona`, `w=gedaechtnis` und `w=freigaben` und schreibt `w=gedaechtnis`.
+  - Die Beratungs-Laufzeit liest dieselben drei plus Astras `w=rueckfragen` (`madelene-gemeinsam.ps1`, 5 Minuten Cache). Sie schreibt `GEMEINSAM:`-Zeilen ins Gedächtnis; `NOTIZ:` bleibt lokal.
+  - `hub-deploy.ps1` lädt `C:\dev\madeleine\persona-gemeinsam.md` als Persona hoch, vorher mit Sperrlisten- und Musterprüfung.
 
 ### Briefkasten `daten/eingang.jsonl` — Buchungen von der Vishnu-Seite (seit 11.09.2026)
 

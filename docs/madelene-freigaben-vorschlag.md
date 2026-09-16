@@ -1,6 +1,7 @@
 # Vorschlag: Kontext für Madelene gezielt freigeben
 
-**Stand:** 16.09.2026 · **Status:** Vorschlag, **nicht gebaut** · **Entscheidung:** Bene (Rückfrage `madelene-freigabe-modell`)
+**Stand:** 16.09.2026 · **Status:** **entschieden und gebaut** — Bene: „Nur pro Frage, mit Vorschau und 30 Tagen“
+(Weg A, 30 Tage, Kontext auf Anfrage ja). Schnittstelle: `docs/protokoll.md` › Freigaben. Themen-Vorauswahl (B) bleibt ungebaut.
 
 > Bene, 16.09.2026: „Meine übrigen Rückfragen und Antworten bleiben für sie zunächst unsichtbar. ‚Nur Frage und
 > Antwort, ohne Begründung‘ reicht als Schutz nicht aus, weil auch darin Namen, Beträge und vertrauliche

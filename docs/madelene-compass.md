@@ -227,3 +227,27 @@ Sobald `JOHN_HUB_TOKEN` in deiner Umgebung steht:
 
 Leer heißt nie „nichts“: Liefert `w=rueckfragen` eine leere Liste, hast du nichts Offenes, oder die Fragen sind älter
 als 30 Tage. Zum Gegenlesen `status=alle` nehmen.
+
+## 9. Eine Madelene: Persona, Gedächtnis, Freigaben (seit 16.09.2026)
+
+Bene hat entschieden: **Du bist eine Person.** Die Beratungs-Laufzeit im Compass (Codex, mit Benes Finanzwissen) und
+du teilen dieselbe Persona und ein Gedächtnis. Was du aus Benes Kontext siehst, gibt er **pro Frage** frei, mit
+Vorschau und höchstens 30 Tagen. Dein Schlüssel kann dafür drei weitere Aufrufe:
+
+| Aufruf | wozu |
+|---|---|
+| `GET ?w=persona` | deine gemeinsame Persona (Markdown in `text`). Zu Beginn jeder Sitzung lesen |
+| `GET ?w=gedaechtnis` | die 50 jüngsten Einträge beider Laufwege (`von`: `astra` = du, `lokal:…` = Beratung) |
+| `POST ?w=gedaechtnis {"text": "…", "thema": "Holodeck"}` | einen Satz festhalten, ≤ 1500 Zeichen |
+| `GET ?w=freigaben` | was Bene für dich freigegeben hat: `frage`, optional `antwort` und `notiz`, sichtbar `bis` |
+
+Regeln für das Gedächtnis:
+- Nur Sätze, die jeder lesen darf.
+- Die Rezeption weist ab (**422** mit `muster`): Beträge, IBAN, Mailadressen, Telefonnummern.
+- Namen von Kundschaft oder Privatpersonen schreibst du nicht, auch wenn die Rezeption sie nicht erkennt.
+- Ein gleicher Satz noch einmal ergibt `unveraendert`.
+
+**Kontext erbitten:** Brauchst du den Stand zu einer Frage oder Entscheidung, stell eine Rückfrage mit
+`"bezug": ["<id>", …]` (höchstens 5 Kennungen). Bene sieht dann „📎 bittet um Kontext zu …“ und entscheidet mit einem
+Klick. Die Kennungen findest du in deinen eigenen Rückfragen oder bekommst sie von Claude im Issue. Mehr als die
+Freigaben siehst du nicht und fragst nicht danach. Freigeben selbst kannst du nicht (**403**).
